@@ -169,35 +169,55 @@ const S = {
   stack: [],
 };
 
-// ── Configuración — reemplaza con tu URL de Apps Script ──────────
-// Obtén la URL al implementar como App web en Apps Script
-// Implementar → Nueva implementación → App web → Ejecutar como: Yo → Acceso: Cualquiera
-const API_URL = 'https://script.google.com/macros/s/AKfycby3GXoeanxgWKwmPStFhNGA9HZDvhiAd1wam3vlK6b8Bh_db3Dh0HNukANxHqa1cG78DQ/exec';
+// ── Configuración ────────────────────────────────────────────────
+// Pega aquí tu URL de Apps Script (termina en /exec)
+const API_URL = 'https://script.google.com/macros/s/AKfycbzqzZ_pWQX66ez8bf3IBzutwPWQmfOlW2srUpjtyM9pJkFbN--MUXqMsKbxWS_MVvT0Wg/exec';
 
-// ── API — fetch() hacia Apps Script (funciona desde GitHub Pages) ─
-async function api(fn, ...args){
-  if(!API_URL || API_URL.includes('REEMPLAZAR')){
-    throw new Error('Configura API_URL en el código con tu URL de Apps Script.');
-  }
-  // Apps Script Web App acepta GET con ?action=fn&args=JSON
-  const params = new URLSearchParams({
-    action: fn,
-    args: JSON.stringify(args)
+// ── API via JSONP — evita CORS de Apps Script ─────────────────────
+// JSONP inyecta un <script> dinámico. Apps Script responde cb({...})
+// No hay restricciones de origen con este método.
+let _cbCount = 0;
+function api(fn, ...args){
+  return new Promise((resolve, reject) => {
+    if(!API_URL || API_URL.includes('REEMPLAZAR')){
+      reject(new Error('Configura API_URL con tu URL de Apps Script.')); return;
+    }
+    const cbName = '_cb' + (++_cbCount);
+    const timeout = setTimeout(() => {
+      delete window[cbName];
+      const s = document.getElementById(cbName);
+      if(s) s.remove();
+      reject(new Error('Timeout — revisa que tu Apps Script esté implementado correctamente.'));
+    }, 20000);
+
+    window[cbName] = (data) => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      const s = document.getElementById(cbName);
+      if(s) s.remove();
+      if(data && data.ok === false){
+        reject(new Error(data.error || 'Error del servidor'));
+      } else {
+        resolve(data);
+      }
+    };
+
+    const params = new URLSearchParams({
+      callback: cbName,
+      action: fn,
+      args: JSON.stringify(args)
+    });
+    const script = document.createElement('script');
+    script.id = cbName;
+    script.src = `${API_URL}?${params}`;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      delete window[cbName];
+      script.remove();
+      reject(new Error('No se pudo conectar con el backend. Verifica la URL de Apps Script.'));
+    };
+    document.head.appendChild(script);
   });
-  const res = await fetch(`${API_URL}?${params}`, {
-    method: 'GET',
-    redirect: 'follow',
-  });
-  if(!res.ok) throw new Error(`Error HTTP ${res.status}`);
-  const text = await res.text();
-  try{
-    const json = JSON.parse(text);
-    if(json.ok === false) throw new Error(json.error || 'Error del servidor');
-    return json;
-  }catch(e){
-    if(e.message.includes('Error')) throw e;
-    throw new Error('Respuesta inválida del servidor');
-  }
 }
 
 // ── Router ───────────────────────────────────────────────────────
