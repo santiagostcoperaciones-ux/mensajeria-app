@@ -170,43 +170,674 @@ const S = {
 };
 
 // ── Configuración ────────────────────────────────────────────────
-const API_URL = 'https://script.google.com/macros/s/AKfycbz1AsqvTHiy-77TmOlcLFZECqacTUenHMe32VqhCABdWMc4qTXQZe9nsSs35nlflZvyuQ/exec';
+const API_URL = 'https://mensajeria-proxy.santiagostcoperaciones.workers.dev';
 
-// ── API — fetch con redirect:follow + extrae JSON del HTML ──────
-// Apps Script redirige /exec → googleusercontent.com (CORS abierto).
-// El backend devuelve HTML con el JSON en un <div id="d">.
-// fetch(redirect:follow) llega al destino final sin bloqueo en móvil.
+// ── API — fetch al Worker de Cloudflare (sin CORS) ──────────────
+// El Worker actúa como proxy entre GitHub Pages y Apps Script.
+// Añade los headers CORS necesarios. URL se configura abajo.
+const API_URL = 'https://mensajeria-proxy.santiagostcoperaciones.workers.dev';
+
+async function api(fn, ...args){
+  if(!API_URL || API_URL.includes('REEMPLAZAR')){
+    throw new Error('Configura API_URL con la URL de tu Cloudflare Worker.');
+  }
+  const params = new URLSearchParams({ action: fn, args: JSON.stringify(args) });
+  const res = await fetch(`${API_URL}?${params}`, {
+    method: 'GET',
+    cache: 'no-store',
+  });
+  if(!res.ok) throw new Error(`Error ${res.status}`);
+  const json = await res.json();
+  if(json.ok === false) throw new Error(json.error || 'Error del servidor');
+  return json;
+}
+
+// ── Router ───────────────────────────────────────────────────────
+async function go(page, push=true){
+  stopScan();
+  if(push && page!=='home') S.stack.push(page);
+  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-b':2,'buscar':3};
+  document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===nm[page]));
+  document.getElementById('btnBack').classList.toggle('vis', S.stack.length>0 && page!=='home');
+  switch(page){
+    case 'home':          S.stack=[]; await pgHome(); break;
+    case 'login':         pgLogin(); break;
+    case 'verificar-cfg': await pgVerificarCfg(); break;
+    case 'verificando':   await pgVerificando(); break;
+    case 'asignar':       await pgAsignar(); break;
+    case 'asignar-b':     await pgAsignarB(); break;
+    case 'buscar':        pgBuscar(); break;
+    default:              await pgHome();
+  }
+}
+function goBack(){
+  S.stack.pop();
+  const p=S.stack[S.stack.length-1]||'home';
+  S.stack.pop(); go(p);
+}
+
+// ── HOME ─────────────────────────────────────────────────────────
+async function pgHome(){
+  setBar('Mensajería', S.op||'');
+  if(!S.op){go('login',false);return;}
+  setP('<div class="ld"><div class="sp"></div></div>');
+  try{
+    const [cr,mr]=await Promise.all([api('srv_getContenedores'),api('srv_getMensajeros')]);
+    S.contenedores=cr.data||[]; S.mensajeros=mr.data||[];
+    const act=S.contenedores.filter(c=>c['Estado']!=='Cerrado');
+    const cer=S.contenedores.filter(c=>c['Estado']==='Cerrado').length;
+    let h=`<div class="sg">
+      <div class="sc"><div class="sn" style="color:var(--acc)">${act.length}</div><div class="sl">Activos</div></div>
+      <div class="sc"><div class="sn" style="color:var(--tx2)">${cer}</div><div class="sl">Cerrados</div></div>
+    </div><div class="st">Contenedores activos</div>`;
+    if(!act.length){
+      h+=`<div class="ld" style="padding:20px"><p style="font-size:var(--fsm);color:var(--tx3);text-align:center">Sin contenedores activos.<br>Crea uno abajo.</p></div>`;
+    } else {
+      act.forEach(c=>{
+        const cls=c['Estado']==='En_Proceso'?'b-bl':'b-am';
+        h+=`<div class="card" onclick="selCont('${esc(c['ID_Contenedor'])}')">
+          <div class="card-row">
+            <div class="ci" style="background:rgba(59,130,246,.1)">📦</div>
+            <div style="flex:1;min-width:0">
+              <div class="ct" style="font-family:var(--mo)">${esc(c['ID_Contenedor'])}</div>
+              <div class="cs">${esc(c['Fecha_Recepcion']||'')} &middot; ${esc(c['Operador_Recepcion']||'')}</div>
+            </div>
+            <span class="b ${cls}">${esc(c['Estado']||'Pendiente')}</span>
+          </div></div>`;
+      });
+    }
+    h+=`<div class="st">Acciones</div>
+    <button class="btn btn-g btn-w" onclick="showNuevoCont()" style="margin-bottom:7px">+ Nuevo contenedor</button>
+    <button class="btn btn-g btn-w btn-s" onclick="localStorage.removeItem('op');S.op='';go('login',false)">Cambiar usuario</button>`;
+    setP(h);
+  }catch(e){setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`);}
+}
+async function selCont(id){ S.cont=id; await go('verificar-cfg'); }
+
+// ── LOGIN ────────────────────────────────────────────────────────
+function pgLogin(){
+  setBar('Identificación','');
+  setP(`<div style="max-width:320px;margin:clamp(16px,6vh,40px) auto">
+    <div style="text-align:center;margin-bottom:22px">
+      <div style="font-size:40px;margin-bottom:8px">📦</div>
+      <div style="font-size:clamp(17px,5vw,20px);font-weight:600">Sistema Mensajería</div>
+      <div style="font-size:var(--fsm);color:var(--tx2);margin-top:5px">Ingresa tu nombre</div>
+    </div>
+    <div class="ig"><label class="lbl">Nombre</label>
+      <input class="inp" id="loginN" placeholder="Ej: Carlos López" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-p btn-w" onclick="doLogin()">Entrar</button>
+  </div>`);
+  setTimeout(()=>document.getElementById('loginN')?.focus(),200);
+}
+function doLogin(){
+  const v=document.getElementById('loginN')?.value.trim();
+  if(!v){toast('Ingresa tu nombre','er');return;}
+  S.op=v; localStorage.setItem('op',v); go('home');
+}
+
+// ════════════════════════════════════════════════════════════════
+// PASO 1 — VERIFICACIÓN DEL CONTENEDOR
+// ════════════════════════════════════════════════════════════════
+
+async function pgVerificarCfg(){
+  setBar('Verificar contenedor','');
+  setP('<div class="ld"><div class="sp"></div></div>');
+  if(!S.contenedores.length){const r=await api('srv_getContenedores');S.contenedores=r.data||[];}
+  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado')
+    .map(c=>`<option value="${esc(c['ID_Contenedor'])}" ${S.cont===c['ID_Contenedor']?'selected':''}>${esc(c['ID_Contenedor'])}</option>`).join('');
+
+  let planHtml='';
+  if(S.cont){
+    try{
+      const rp=await api('srv_getPlanificacion', S.cont);
+      S.plan=rp.data||[];
+      if(S.plan.length){
+        planHtml=`<div class="st">Configurar zonas — ${esc(S.cont)}</div>
+        <div class="note" style="margin-bottom:10px">Ajusta el tipo y la capacidad por bolsa según el día de hoy. Los valores vienen de la configuración base pero puedes cambiarlos.</div>`;
+
+        S.plan.forEach((z,zi)=>{
+          // Calcular bolsas según capacidad actual
+          const bolsasStr=z.bolsas.map((n,i)=>`<span class="pzb">Bolsa ${i+1}: ${n} paq.</span>`).join('');
+          const esFija=z.tipo==='Fija';
+          planHtml+=`<div class="pzcard" id="zcard_${zi}">
+            <div class="pzhead">
+              <div>
+                <div class="pzname">${esc(z.zona)}</div>
+                <div style="font-size:var(--fss);color:var(--tx2)">${z.total} paquetes hoy</div>
+              </div>
+              <span class="b b-gy">${z.total} paq.</span>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0">
+              <div>
+                <div class="lbl" style="margin-bottom:4px">Tipo</div>
+                <select class="inp" style="height:38px;font-size:var(--fss)"
+                  id="tipo_${zi}" onchange="recalcBolsas(${zi})">
+                  <option value="Fija"     ${esFija?'selected':''}>Fija — 1 mensajero</option>
+                  <option value="Variable" ${!esFija?'selected':''}>Variable — dividir</option>
+                </select>
+              </div>
+              <div id="capWrap_${zi}" style="${esFija?'opacity:.4;pointer-events:none':''}">
+                <div class="lbl" style="margin-bottom:4px">Paq. por bolsa</div>
+                <input class="inp" type="number" min="1" style="height:38px;font-size:var(--fss)"
+                  id="cap_${zi}" value="${z.cap}" oninput="recalcBolsas(${zi})">
+              </div>
+            </div>
+
+            <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:4px">Bolsas resultantes:</div>
+            <div class="pzbolsas" id="bolsas_${zi}">${bolsasStr}</div>
+          </div>`;
+        });
+
+        if(rp.fueraZona>0){
+          planHtml+=`<div class="note" style="border:1px solid rgba(239,68,68,.3);margin-top:6px">
+            ⚠ ${rp.fueraZona} paquete(s) fuera de zona — van a devolución a bodega
+          </div>`;
+        }
+      } else {
+        planHtml=`<div class="note">No hay paquetes zonificados en este contenedor. Ejecuta primero el script de zonificación en Sheets.</div>`;
+      }
+    }catch(e){planHtml=`<div class="note" style="color:var(--red)">Error: ${esc(e.message)}</div>`;}
+  }
+
+  setP(`<div>
+    <div class="ig"><label class="lbl">Contenedor</label>
+      <select class="inp" id="sCont" onchange="S.cont=this.value;S.plan=[];pgVerificarCfg()">
+        <option value="">Seleccionar...</option>${cOpts}
+      </select>
+    </div>
+    ${planHtml}
+    <div class="mt">
+      <button class="btn btn-p btn-w" onclick="iniciarVerificacion()">Iniciar verificación</button>
+    </div>
+  </div>`);
+}
+
+// Recalcular bolsas en tiempo real al cambiar tipo o capacidad
+function recalcBolsas(zi){
+  const tipo=document.getElementById('tipo_'+zi)?.value;
+  const capEl=document.getElementById('cap_'+zi);
+  const capWrap=document.getElementById('capWrap_'+zi);
+  const bolsasEl=document.getElementById('bolsas_'+zi);
+  const z=S.plan[zi];
+  if(!z) return;
+
+  const esFija=tipo==='Fija';
+  if(capWrap){capWrap.style.opacity=esFija?'.4':'1'; capWrap.style.pointerEvents=esFija?'none':'';}
+
+  const cap=esFija?z.total:Math.max(1,parseInt(capEl?.value)||z.cap);
+  let bolsas;
+  if(esFija || z.total<=cap){
+    bolsas=[z.total];
+  } else {
+    const n=Math.ceil(z.total/cap);
+    const base=Math.floor(z.total/n);
+    const extra=z.total%n;
+    bolsas=Array.from({length:n},(_,i)=>i<extra?base+1:base);
+  }
+
+  // Actualizar plan en memoria
+  z.tipo=tipo; z.cap=cap; z.bolsas=bolsas; z.mensajerosSugeridos=bolsas.length;
+
+  if(bolsasEl){
+    bolsasEl.innerHTML=bolsas.map((n,i)=>`<span class="pzb">Bolsa ${i+1}: ${n} paq.</span>`).join('');
+  }
+}
+
+function iniciarVerificacion(){
+  S.cont=document.getElementById('sCont')?.value||S.cont;
+  if(!S.cont){toast('Selecciona un contenedor','er');return;}
+  if(!S.plan.length){toast('No hay zonas configuradas','er');return;}
+  // Leer valores actuales de los inputs antes de iniciar
+  S.plan.forEach((_,zi)=>recalcBolsas(zi));
+  // Inicializar contadores de zonas
+  S.zonaContadores={};
+  S.plan.forEach(z=>{
+    S.zonaContadores[z.zona]={
+      count:0, bolsaActual:1, bolsas:z.bolsas, tipo:z.tipo,
+    };
+  });
+  S.scanN=0;
+  go('verificando');
+}
+
+async function pgVerificando(){
+  setBar('Verificando', S.cont||'');
+  setP(`
+    <div id="swrap"><div id="sinner">
+      <video id="svid" playsinline autoplay muted></video>
+      <div class="sov"><div class="sbox"><div class="sc1"></div><div class="sc2"></div><div class="sline"></div></div></div>
+    </div></div>
+    <div class="sst" id="sst">Iniciando cámara...</div>
+    <div class="ctr" id="ctrBox">
+      <div><div class="ctrn" id="ctrN">0</div><div style="font-size:var(--fss);color:var(--tx2)">verificados</div></div>
+      <div style="text-align:right">
+        <div style="font-size:var(--fsm);font-weight:500">${esc(S.cont||'')}</div>
+        <div style="font-size:var(--fss);color:var(--tx2)">Modo verificación</div>
+      </div>
+    </div>
+    <div id="bolsaAlert" style="display:none"></div>
+    <div class="slast" id="slast" style="color:var(--tx3)">— apunta al código —</div>
+    <div style="display:flex;gap:7px;margin-top:4px">
+      <button class="btn btn-g" style="flex:1" onclick="go('verificar-cfg')">Cambiar config</button>
+      <button class="btn btn-g btn-s" onclick="go('home')">Finalizar</button>
+    </div>`);
+  await initScan(onVerificacionCode);
+}
+
+async function onVerificacionCode(guia){
+  try{
+    const r = await api('srv_escanearVerificacion', guia, S.cont, S.op);
+
+    function showZona(guia, zona, color){
+      const el=document.getElementById('slast');
+      if(!el) return;
+      el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px">
+        <span style="font-family:var(--mo);font-size:var(--fss)">${esc(guia)}</span>
+        <span style="font-size:var(--fss);font-weight:600;color:${color};background:rgba(0,0,0,.2);padding:2px 8px;border-radius:5px;flex-shrink:0">${esc(zona||'—')}</span>
+      </div>`;
+    }
+
+    switch(r.caso){
+      case 'verificado':
+        S.scanN++;
+        const ne=document.getElementById('ctrN');
+        if(ne) ne.textContent=S.scanN;
+        showZona(guia, r.zona, 'var(--grn)');
+        // Flash borde
+        const cb=document.getElementById('ctrBox');
+        if(cb){cb.style.borderColor='var(--grn)';setTimeout(()=>cb.style.borderColor='',500);}
+        // Actualizar contador de zona y verificar si completó una bolsa
+        verificarBolsa(guia, r.zona);
+        setTimeout(resumeScan, 350);
+        break;
+
+      case 'adicional':
+        showZona(guia, 'ADICIONAL', 'var(--amb)');
+        dialog('Paquete adicional', 'No estaba en el manifiesto.\n¿Agregar como adicional al contenedor?', guia,[
+          {l:'Sí, agregar como adicional', c:'btn-a', fn:async()=>{
+            closeDlg();
+            await api('srv_registrarAdicional', guia, S.cont, S.op);
+            S.scanN++; document.getElementById('ctrN').textContent=S.scanN;
+            toast('Adicional registrado','wa'); setTimeout(resumeScan,300);
+          }},
+          {l:'Cancelar', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
+        ]);
+        break;
+
+      case 'otro_contenedor':
+        showZona(guia, 'OTRO CONT', 'var(--red)');
+        dialog('Contenedor incorrecto', r.msg||'Pertenece a otro contenedor', guia,[
+          {l:'Entendido', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
+        ]);
+        break;
+
+      default:
+        toast(r.error||'Error','er'); setTimeout(resumeScan,1000);
+    }
+  }catch(e){toast('Error: '+e.message,'er');setTimeout(resumeScan,1000);}
+}
+
+function verificarBolsa(guia, zona){
+  const zc=S.zonaContadores[zona];
+  if(!zc) return; // zona sin configuración de bolsa
+  zc.count++;
+  const limiteBolsaActual = zc.bolsas[zc.bolsaActual-1];
+  if(!limiteBolsaActual) return;
+
+  if(zc.count >= limiteBolsaActual && zc.bolsaActual < zc.bolsas.length){
+    // Bolsa completa — mostrar alerta
+    const bolsaCompletada = zc.bolsaActual;
+    const siguiente = zc.bolsaActual + 1;
+    const paqSiguiente = zc.bolsas[siguiente-1];
+    zc.bolsaActual++;
+    zc.count = 0;
+
+    const alertEl = document.getElementById('bolsaAlert');
+    if(alertEl){
+      alertEl.style.display='block';
+      alertEl.innerHTML=`<div class="bolsa-alert">
+        <div class="bolsa-num">${esc(zona)}</div>
+        <div class="bolsa-label">Bolsa ${bolsaCompletada} completa (${limiteBolsaActual} paq.)</div>
+        <div style="font-size:var(--fsm);color:var(--tx);margin-top:8px;font-weight:500">
+          ↓ Separa esta pila físicamente
+        </div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:4px">
+          Abre bolsa ${siguiente} → ${paqSiguiente} paquetes
+        </div>
+        <button class="btn btn-a btn-w" style="margin-top:10px" onclick="document.getElementById('bolsaAlert').style.display='none';resumeScan()">
+          Entendido — continuar escaneando
+        </button>
+      </div>`;
+      stopScan(); // Pausar hasta confirmar
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+// PASO 2 — ASIGNACIÓN A MENSAJEROS
+// Lógica: las bolsas ya están separadas físicamente desde la
+// verificación. Solo se selecciona qué mensajero lleva cada bolsa.
+// ════════════════════════════════════════════════════════════════
+
+async function pgAsignar(){
+  setBar('Asignar mensajeros','');
+  setP('<div class="ld"><div class="sp"></div></div>');
+  if(!S.contenedores.length){const r=await api('srv_getContenedores');S.contenedores=r.data||[];}
+  if(!S.mensajeros.length){const r=await api('srv_getMensajeros');S.mensajeros=r.data||[];}
+
+  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado')
+    .map(c=>`<option value="${esc(c['ID_Contenedor'])}" ${S.cont===c['ID_Contenedor']?'selected':''}>${esc(c['ID_Contenedor'])}</option>`).join('');
+
+  // Cargar plan si hay contenedor seleccionado
+  if(S.cont && !S.plan.length){
+    try{const rp=await api('srv_getPlanificacion',S.cont);S.plan=rp.data||[];}catch(e){}
+  }
+
+  let zonaHtml='';
+  if(S.cont && S.plan.length){
+    const mOpts=S.mensajeros
+      .map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('');
+
+    zonaHtml=`<div class="st">Asignar mensajero por bolsa</div>
+    <div class="note" style="margin-bottom:12px">Las bolsas ya están separadas físicamente. Selecciona el mensajero de cada una y toca Confirmar.</div>`;
+
+    S.plan.forEach(z=>{
+      z.bolsas.forEach((n,bi)=>{
+        const bolsaId=`${z.zona}-B${bi+1}`;
+        const label = z.bolsas.length===1
+          ? `${z.zona} · ${n} paquetes`
+          : `${z.zona} · Bolsa ${bi+1} · ${n} paquetes`;
+        zonaHtml+=`<div class="pzcard">
+          <div class="pzhead">
+            <div>
+              <div class="pzname">${esc(z.zona)}</div>
+              <div style="font-size:var(--fss);color:var(--tx2)">${z.bolsas.length>1?`Bolsa ${bi+1} de ${z.bolsas.length} · `:''}${n} paquetes</div>
+            </div>
+            <span class="b b-gy">${n} paq.</span>
+          </div>
+          <div class="ig" style="margin-bottom:0">
+            <label class="lbl">Mensajero</label>
+            <select class="inp" id="mens_${esc(bolsaId)}">
+              <option value="">Seleccionar mensajero...</option>${mOpts}
+            </select>
+          </div>
+        </div>`;
+      });
+    });
+
+    zonaHtml+=`<button class="btn btn-p btn-w mt" onclick="confirmarAsignaciones()">Confirmar todas las asignaciones</button>`;
+  } else if(S.cont){
+    zonaHtml=`<div class="note">No hay plan cargado. Asegúrate de haber completado la verificación primero.</div>`;
+  } else {
+    zonaHtml=`<div class="note">Selecciona un contenedor para ver las bolsas a asignar.</div>`;
+  }
+
+  setP(`<div>
+    <div class="ig"><label class="lbl">Contenedor</label>
+      <select class="inp" id="sCont2" onchange="S.cont=this.value;S.plan=[];pgAsignar()">
+        <option value="">Seleccionar...</option>${cOpts}
+      </select>
+    </div>
+    ${zonaHtml}
+  </div>`);
+}
+
+async function confirmarAsignaciones(){
+  // Recoger todas las selecciones
+  const asignaciones=[];
+  let ok=true;
+  S.plan.forEach(z=>{
+    z.bolsas.forEach((n,bi)=>{
+      const bolsaId=`${z.zona}-B${bi+1}`;
+      const mensId=document.getElementById('mens_'+bolsaId)?.value;
+      if(!mensId){
+        toast(`Falta mensajero en ${z.zona} Bolsa ${bi+1}`,'er');
+        ok=false; return;
+      }
+      asignaciones.push({zona:z.zona, bolsaId, mensId, n});
+    });
+  });
+  if(!ok) return;
+
+  setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Asignando...</span></div>');
+  let totalAsignados=0;
+  for(const a of asignaciones){
+    try{
+      const r=await api('srv_asignarZonaCompleta', S.cont, a.zona, a.mensId, a.bolsaId, S.op);
+      totalAsignados+=(r.asignados||0);
+    }catch(e){toast('Error en '+a.zona+': '+e.message,'er');}
+  }
+  toast(`${totalAsignados} paquetes asignados ✓`,'ok');
+  S.plan=[];
+  await pgAsignar();
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// BUSCAR GUÍA
+// ════════════════════════════════════════════════════════════════
+
+function pgBuscar(){
+  setBar('Buscar guía','');
+  setP(`
+    <div style="position:relative;margin-bottom:11px">
+      <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:var(--tx3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input class="inp" id="si" style="padding-left:40px" placeholder="Número de guía" onkeydown="if(event.key==='Enter')doSearch()" inputmode="numeric">
+    </div>
+    <button class="btn btn-p btn-w" onclick="doSearch()" style="margin-bottom:14px">Buscar</button>
+    <div id="sr"></div>`);
+  setTimeout(()=>document.getElementById('si')?.focus(),100);
+}
+
+async function doSearch(){
+  const guia=document.getElementById('si')?.value.trim();
+  if(!guia){toast('Ingresa un número de guía','er');return;}
+  document.getElementById('sr').innerHTML='<div class="ld"><div class="sp"></div></div>';
+  try{
+    const r=await api('srv_buscarGuia',guia);
+    if(!r.data){
+      document.getElementById('sr').innerHTML=`<div class="ld"><p style="font-size:var(--fsm);color:var(--tx3)">No se encontró: <span style="font-family:var(--mo)">${esc(guia)}</span></p></div>`;
+      return;
+    }
+    const p=r.data;
+    const est=p['Estado']||'Desconocido';
+    const cls={Disponible:'b-bl',Verificado:'b-bl',Asignado:'b-gr',En_Ruta:'b-gr',Entregado:'b-gr',Devuelto:'b-am',Fuera_Zona:'b-rd',Adicional:'b-pu'}[est]||'b-gy';
+    let h=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px;gap:7px">
+        <span style="font-family:var(--mo);font-size:var(--fss);font-weight:600;word-break:break-all">${esc(p['Num_Guia']||guia)}</span>
+        <span class="b ${cls}" style="flex-shrink:0">${esc(est)}</span>
+      </div>
+      <div style="font-size:var(--fsm);color:var(--tx2);line-height:1.9">
+        <div>Contenedor: <span style="color:var(--tx)">${esc(p['ID_Contenedor']||'—')}</span></div>
+        <div>Zona: <span style="color:var(--tx)">${esc(p['Zona_Asignada']||'—')}</span></div>
+        <div>Mensajero: <span style="color:var(--tx)">${esc(p['Mensajero_Actual']||'—')}</span></div>
+        <div>Intentos: <span style="color:var(--tx)">${esc(String(p['Intentos_Entrega']||'0'))}</span></div>
+        <div style="word-break:break-all">Dirección: <span style="color:var(--tx)">${esc(p['Direccion_Original']||'—')}</span></div>
+      </div>`;
+    if(['Asignado','En_Ruta'].includes(est)){
+      h+=`<hr class="dv"><button class="btn btn-d btn-s" onclick="confDesasignar('${esc(p['Num_Guia']||guia)}')">Quitar asignación (error)</button>`;
+    }
+    h+=`</div>`;
+    if(r.historial?.length){
+      h+=`<div class="st">Historial</div>`;
+      r.historial.forEach(x=>{
+        const ac=x['Accion']||'';
+        const col={Asignado:'var(--grn)',Reasignado:'var(--amb)',Devuelto:'var(--red)',Desasignado:'var(--acc)'}[ac]||'var(--tx3)';
+        h+=`<div style="display:flex;gap:11px;padding:10px 0;border-bottom:1px solid var(--brd)">
+          <div style="width:9px;height:9px;border-radius:50%;background:${col};flex-shrink:0;margin-top:4px"></div>
+          <div><div style="font-size:var(--fsm);font-weight:500">${esc(ac)} → ${esc(x['Mensajero_Nuevo']||'Bodega')}</div>
+          <div style="font-size:var(--fss);color:var(--tx3)">${esc(x['Fecha_Hora']||'')} &middot; ${esc(x['Operador']||'')}</div></div>
+        </div>`;
+      });
+    }
+    document.getElementById('sr').innerHTML=h;
+  }catch(e){document.getElementById('sr').innerHTML=`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`;}
+}
+
+function confDesasignar(guia){
+  dialog('Quitar asignación','¿Confirmas que fue asignado por error?',guia,[
+    {l:'Sí, quitar',c:'btn-d',fn:async()=>{closeDlg();await api('srv_desasignarPaquete',guia,S.op);toast('Desasignado','ok');doSearch();}},
+    {l:'Cancelar',c:'btn-g',fn:closeDlg}
+  ]);
+}
+
+// ════════════════════════════════════════════════════════════════
+// SCANNER — BarcodeDetector nativo (sin CDN)
+// ════════════════════════════════════════════════════════════════
+
+async function initScan(callback){
+  S._scanCallback = callback;
+  const vid=document.getElementById('svid');
+  if(!vid){setSt('Error: elemento de video no encontrado');return;}
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+    });
+    vid.srcObject=stream; S._stream=stream;
+    await new Promise(r=>{vid.onloadedmetadata=r;setTimeout(r,3000);});
+    await vid.play().catch(()=>{});
+    if('BarcodeDetector' in window){
+      const formats=await BarcodeDetector.getSupportedFormats().catch(()=>[
+        'qr_code','code_128','ean_13','ean_8','itf','code_39','data_matrix','aztec','pdf417'
+      ]);
+      S._bd=new BarcodeDetector({formats});
+      S.scanning=true;
+      setSt('Apunta al código de barras o QR');
+      scanLoop();
+    } else {
+      S.scanning=true;
+      setSt('Escaneo manual — ingresa la guía:');
+      const stEl=document.getElementById('sst');
+      if(stEl) stEl.innerHTML=`
+        <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:6px">Ingresa la guía manualmente (usa Chrome para escaneo automático):</div>
+        <div style="display:flex;gap:6px">
+          <input id="miInput" class="inp" style="flex:1;height:42px" placeholder="2600..." inputmode="numeric"
+            onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){const g=cleanGuia(v);if(g)onCode(g);else toast('Código no válido','er');}}">
+          <button class="btn btn-p btn-s" onclick="const v=document.getElementById('miInput')?.value.trim();if(v){const g=cleanGuia(v);if(g)onCode(g);else toast('Código no válido','er');}">OK</button>
+        </div>`;
+    }
+  }catch(e){
+    const msg={NotAllowedError:'Permiso de cámara denegado.\nVe a Ajustes Chrome → Permisos → Cámara → Permitir script.google.com',NotFoundError:'No se encontró cámara.'}[e.name]||'Error: '+e.message;
+    setSt(msg);
+  }
+}
+
+async function scanLoop(){
+  if(!S.scanning||!document.getElementById('svid')) return;
+  try{
+    const vid=document.getElementById('svid');
+    if(vid && S._bd){
+      const results=await S._bd.detect(vid);
+      if(results?.length){
+        for(const r of results){
+          const guia=cleanGuia(r.rawValue);
+          if(guia){onCode(guia);return;}
+        }
+      }
+    }
+  }catch(e){}
+  S._st=setTimeout(scanLoop,200);
+}
+
+function onCode(guia){
+  S.scanning=false;
+  clearTimeout(S._st);
+  const mi=document.getElementById('miInput');
+  if(mi) mi.value='';
+  if(S._scanCallback) S._scanCallback(guia);
+}
+
+function stopScan(){
+  S.scanning=false;
+  clearTimeout(S._st);
+  S._bd=null;
+  if(S._stream){S._stream.getTracks().forEach(t=>t.stop());S._stream=null;}
+}
+
+function resumeScan(){
+  if(!S._stream){initScan(S._scanCallback);return;}
+  S.scanning=true;
+  setSt('Apunta al código de barras o QR');
+  const mi=document.getElementById('miInput');
+  if(mi){mi.value='';mi.focus();}
+  if(S._bd) scanLoop();
+}
+
+function setSt(t){const e=document.getElementById('sst');if(e&&typeof t==='string')e.textContent=t;}
+
+// ════════════════════════════════════════════════════════════════
+// HELPERS UI
+// ════════════════════════════════════════════════════════════════
+
+function showNuevoCont(){
+  dialog('Nuevo contenedor','Ingresa el código:','',[], true);
+}
+async function doCrearCont(){
+  const v=document.getElementById('newContInp')?.value.trim();
+  if(!v){toast('Ingresa un código','er');return;}
+  closeDlg();
+  await api('srv_crearContenedor',v,S.op);
+  toast('Contenedor creado ✓','ok');
+  const r=await api('srv_getContenedores');
+  S.contenedores=r.data||[];
+  pgHome();
+}
+
+function dialog(title, msg, guia, acts, isInput=false){
+  document.getElementById('dlgT').textContent=title;
+  document.getElementById('dlgM').textContent=msg;
+  const gEl=document.getElementById('dlgG');
+  if(guia){gEl.textContent=guia;gEl.style.display='block';}
+  else if(isInput){gEl.innerHTML=`<input class="inp" id="newContInp" placeholder="EQ61949884" style="margin:0">`;gEl.style.display='block';}
+  else{gEl.style.display='none';}
+  const aEl=document.getElementById('dlgA');
+  if(isInput){
+    aEl.innerHTML=`<button class="btn btn-p btn-w" onclick="doCrearCont()">Crear</button><button class="btn btn-g btn-w" onclick="closeDlg()">Cancelar</button>`;
+  } else {
+    aEl.innerHTML=acts.map(a=>`<button class="btn ${a.c} btn-w" onclick="(${a.fn.toString()})()">${esc(a.l)}</button>`).join('');
+  }
+  document.getElementById('dlg').classList.add('open');
+  if(isInput) setTimeout(()=>document.getElementById('newContInp')?.focus(),100);
+}
+function closeDlg(){document.getElementById('dlg').classList.remove('open');}
+
+let tT;
+function toast(msg,type='ok'){
+  const e=document.getElementById('toast');
+  e.textContent=msg; e.className='on '+type;
+  clearTimeout(tT); tT=setTimeout(()=>e.className='',2400);
+}
+
+function setBar(t,s){document.getElementById('pgT').textContent=t;document.getElementById('pgS').textContent=s;}
+function setP(h){document.getElementById('pg').innerHTML=h;}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function cleanGuia(raw){
+  if(!raw) return null;
+  const g=String(raw).replace(/\s+/g,'').trim();
+  if(!g) return null;
+  if(/^26\d{14}$/.test(g)) return g;
+  if(g.length>=6&&g.length<=60) return g;
+  return null;
+}
+
+go('home',false);
+</script>
+</body>
+</html>// ── API — fetch al proxy Cloudflare (CORS resuelto) ─────────────
 async function api(fn, ...args){
   const params = new URLSearchParams({ action: fn, args: JSON.stringify(args) });
   const url = `${API_URL}?${params}`;
   try{
-    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
+    const res = await fetch(url, { method:'GET', cache:'no-store' });
     const text = await res.text();
-
-    // Intentar parsear directamente como JSON primero
-    if(text.trim().startsWith('{')||text.trim().startsWith('[')){
-      const json = JSON.parse(text);
-      if(json.ok===false) throw new Error(json.error||'Error del servidor');
-      return json;
-    }
-
-    // Extraer JSON del <div id="d"> del HTML
-    const match = text.match(/<div[^>]*id=["']d["'][^>]*>([\s\S]*?)<\/div>/);
-    if(match){
-      const raw = match[1]
-        .replace(/&lt;/g,'<')
-        .replace(/&gt;/g,'>')
-        .replace(/&amp;/g,'&')
-        .trim();
-      const json = JSON.parse(raw);
-      if(json.ok===false) throw new Error(json.error||'Error del servidor');
-      return json;
-    }
-
-    throw new Error('Respuesta inesperada del servidor. Reimplementa Apps Script.');
+    const json = JSON.parse(text);
+    if(json.ok === false) throw new Error(json.error || 'Error del servidor');
+    return json;
   }catch(e){
-    if(e.name==='TypeError'||e.message.includes('Failed to fetch')||e.message.includes('NetworkError')){
-      throw new Error('Sin conexión. Verifica tu internet.');
+    if(e.name === 'TypeError' || e.message.includes('fetch')){
+      throw new Error('Sin conexion al servidor.');
     }
     throw e;
   }
