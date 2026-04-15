@@ -170,54 +170,46 @@ const S = {
 };
 
 // ── Configuración ────────────────────────────────────────────────
-// Pega aquí tu URL de Apps Script (termina en /exec)
 const API_URL = 'https://script.google.com/macros/s/AKfycbz1AsqvTHiy-77TmOlcLFZECqacTUenHMe32VqhCABdWMc4qTXQZe9nsSs35nlflZvyuQ/exec';
 
-// ── API via JSONP — evita CORS de Apps Script ─────────────────────
-// JSONP inyecta un <script> dinámico. Apps Script responde cb({...})
-// No hay restricciones de origen con este método.
-let _cbCount = 0;
-function api(fn, ...args){
-  return new Promise((resolve, reject) => {
-    if(!API_URL || API_URL.includes('REEMPLAZAR')){
-      reject(new Error('Configura API_URL con tu URL de Apps Script.')); return;
+// ── API — fetch con redirect:follow + extrae JSON del HTML ──────
+// Apps Script redirige /exec → googleusercontent.com (CORS abierto).
+// El backend devuelve HTML con el JSON en un <div id="d">.
+// fetch(redirect:follow) llega al destino final sin bloqueo en móvil.
+async function api(fn, ...args){
+  const params = new URLSearchParams({ action: fn, args: JSON.stringify(args) });
+  const url = `${API_URL}?${params}`;
+  try{
+    const res = await fetch(url, { method:'GET', redirect:'follow', cache:'no-store' });
+    const text = await res.text();
+
+    // Intentar parsear directamente como JSON primero
+    if(text.trim().startsWith('{')||text.trim().startsWith('[')){
+      const json = JSON.parse(text);
+      if(json.ok===false) throw new Error(json.error||'Error del servidor');
+      return json;
     }
-    const cbName = '_cb' + (++_cbCount);
-    const timeout = setTimeout(() => {
-      delete window[cbName];
-      const s = document.getElementById(cbName);
-      if(s) s.remove();
-      reject(new Error('Timeout — revisa que tu Apps Script esté implementado correctamente.'));
-    }, 20000);
 
-    window[cbName] = (data) => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      const s = document.getElementById(cbName);
-      if(s) s.remove();
-      if(data && data.ok === false){
-        reject(new Error(data.error || 'Error del servidor'));
-      } else {
-        resolve(data);
-      }
-    };
+    // Extraer JSON del <div id="d"> del HTML
+    const match = text.match(/<div[^>]*id=["']d["'][^>]*>([\s\S]*?)<\/div>/);
+    if(match){
+      const raw = match[1]
+        .replace(/&lt;/g,'<')
+        .replace(/&gt;/g,'>')
+        .replace(/&amp;/g,'&')
+        .trim();
+      const json = JSON.parse(raw);
+      if(json.ok===false) throw new Error(json.error||'Error del servidor');
+      return json;
+    }
 
-    const params = new URLSearchParams({
-      callback: cbName,
-      action: fn,
-      args: JSON.stringify(args)
-    });
-    const script = document.createElement('script');
-    script.id = cbName;
-    script.src = `${API_URL}?${params}`;
-    script.onerror = () => {
-      clearTimeout(timeout);
-      delete window[cbName];
-      script.remove();
-      reject(new Error('No se pudo conectar con el backend. Verifica la URL de Apps Script.'));
-    };
-    document.head.appendChild(script);
-  });
+    throw new Error('Respuesta inesperada del servidor. Reimplementa Apps Script.');
+  }catch(e){
+    if(e.name==='TypeError'||e.message.includes('Failed to fetch')||e.message.includes('NetworkError')){
+      throw new Error('Sin conexión. Verifica tu internet.');
+    }
+    throw e;
+  }
 }
 
 // ── Router ───────────────────────────────────────────────────────
