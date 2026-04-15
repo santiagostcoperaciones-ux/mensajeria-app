@@ -169,17 +169,35 @@ const S = {
   stack: [],
 };
 
-// ── API ──────────────────────────────────────────────────────────
-function api(fn, ...args){
-  return new Promise((res,rej)=>{
-    if(typeof google==='undefined'||!google.script?.run){
-      rej(new Error('Abre desde la URL de Apps Script.')); return;
-    }
-    google.script.run
-      .withSuccessHandler(r=>{try{res(JSON.parse(r));}catch(e){rej(new Error('Respuesta inválida'));}})
-      .withFailureHandler(e=>rej(new Error(e.message||String(e))))
-      [fn](...args);
+// ── Configuración — reemplaza con tu URL de Apps Script ──────────
+// Obtén la URL al implementar como App web en Apps Script
+// Implementar → Nueva implementación → App web → Ejecutar como: Yo → Acceso: Cualquiera
+const API_URL = 'https://script.google.com/macros/s/AKfycby3GXoeanxgWKwmPStFhNGA9HZDvhiAd1wam3vlK6b8Bh_db3Dh0HNukANxHqa1cG78DQ/exec';
+
+// ── API — fetch() hacia Apps Script (funciona desde GitHub Pages) ─
+async function api(fn, ...args){
+  if(!API_URL || API_URL.includes('REEMPLAZAR')){
+    throw new Error('Configura API_URL en el código con tu URL de Apps Script.');
+  }
+  // Apps Script Web App acepta GET con ?action=fn&args=JSON
+  const params = new URLSearchParams({
+    action: fn,
+    args: JSON.stringify(args)
   });
+  const res = await fetch(`${API_URL}?${params}`, {
+    method: 'GET',
+    redirect: 'follow',
+  });
+  if(!res.ok) throw new Error(`Error HTTP ${res.status}`);
+  const text = await res.text();
+  try{
+    const json = JSON.parse(text);
+    if(json.ok === false) throw new Error(json.error || 'Error del servidor');
+    return json;
+  }catch(e){
+    if(e.message.includes('Error')) throw e;
+    throw new Error('Respuesta inválida del servidor');
+  }
 }
 
 // ── Router ───────────────────────────────────────────────────────
