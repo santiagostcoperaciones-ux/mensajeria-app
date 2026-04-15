@@ -145,6 +145,9 @@ hr.dv{border:none;border-top:1px solid var(--brd);margin:12px 0}
     <button class="nb" id="nb3" onclick="go('buscar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Buscar
     </button>
+    <button class="nb" id="nb4" onclick="go('audit')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Auditoría
+    </button>
   </nav>
 </div>
 <div class="dlg-bg" id="dlg">
@@ -190,7 +193,7 @@ async function api(fn, ...args){
 async function go(page, push=true){
   stopScan();
   if(push && page!=='home') S.stack.push(page);
-  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-b':2,'buscar':3};
+  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-b':2,'buscar':3,'audit':4,'audit-cont':4};
   document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===nm[page]));
   document.getElementById('btnBack').classList.toggle('vis', S.stack.length>0 && page!=='home');
   switch(page){
@@ -201,6 +204,8 @@ async function go(page, push=true){
     case 'asignar':       await pgAsignar(); break;
     case 'asignar-b':     await pgAsignarB(); break;
     case 'buscar':        pgBuscar(); break;
+    case 'audit':         await pgAudit(); break;
+    case 'audit-cont':    await pgAuditCont(); break;
     default:              await pgHome();
   }
 }
@@ -616,13 +621,96 @@ async function confirmarAsignaciones(){
 function pgBuscar(){
   setBar('Buscar guía','');
   setP(`
-    <div style="position:relative;margin-bottom:11px">
-      <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:var(--tx3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-      <input class="inp" id="si" style="padding-left:40px" placeholder="Número de guía" onkeydown="if(event.key==='Enter')doSearch()" inputmode="numeric">
+    <div style="display:flex;gap:7px;margin-bottom:11px">
+      <div style="position:relative;flex:1">
+        <svg style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:17px;height:17px;color:var(--tx3)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input class="inp" id="si" style="padding-left:40px" placeholder="Número de guía" onkeydown="if(event.key==='Enter')doSearch()" inputmode="numeric">
+      </div>
+      <button class="btn btn-g btn-s" onclick="toggleBuscarScan()" id="btnScanBuscar" title="Escanear QR">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>
+      </button>
+    </div>
+    <div id="buscarScanBox" style="display:none;margin-bottom:11px">
+      <div id="bswrap" style="position:relative;width:100%;max-width:340px;margin:0 auto 8px">
+        <div style="padding-top:70%;background:#000;border-radius:var(--r);overflow:hidden;position:relative">
+          <video id="bsvid" playsinline autoplay muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none">
+            <div style="width:55%;aspect-ratio:1;position:relative">
+              <div style="position:absolute;top:0;left:0;width:18px;height:18px;border-top:3px solid var(--acc);border-left:3px solid var(--acc);border-radius:3px 0 0 0"></div>
+              <div style="position:absolute;top:0;right:0;width:18px;height:18px;border-top:3px solid var(--acc);border-right:3px solid var(--acc);border-radius:0 3px 0 0"></div>
+              <div style="position:absolute;bottom:0;right:0;width:18px;height:18px;border-bottom:3px solid var(--acc);border-right:3px solid var(--acc);border-radius:0 0 3px 0"></div>
+              <div style="position:absolute;bottom:0;left:0;width:18px;height:18px;border-bottom:3px solid var(--acc);border-left:3px solid var(--acc);border-radius:0 0 0 3px"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="sst" id="bsst" style="text-align:center;font-size:var(--fss);color:var(--tx2);margin-bottom:6px">Apunta al código</div>
     </div>
     <button class="btn btn-p btn-w" onclick="doSearch()" style="margin-bottom:14px">Buscar</button>
     <div id="sr"></div>`);
   setTimeout(()=>document.getElementById('si')?.focus(),100);
+}
+
+function toggleBuscarScan(){
+  const box = document.getElementById('buscarScanBox');
+  const btn = document.getElementById('btnScanBuscar');
+  if(box.style.display==='none'){
+    box.style.display='block';
+    btn.style.borderColor='var(--acc)';
+    btn.style.color='var(--acc)';
+    initBuscarScan();
+  } else {
+    box.style.display='none';
+    btn.style.borderColor='';
+    btn.style.color='';
+    stopBuscarScan();
+  }
+}
+
+function initBuscarScan(){
+  const vid = document.getElementById('bsvid');
+  if(!vid) return;
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
+    .then(stream=>{
+      vid.srcObject = stream;
+      S._bsStream = stream;
+      vid.play().catch(()=>{});
+      if('BarcodeDetector' in window){
+        BarcodeDetector.getSupportedFormats().then(fmts=>{
+          S._bsBD = new BarcodeDetector({formats:fmts});
+          function loop(){
+            if(!S._bsStream||!document.getElementById('bsvid')) return;
+            S._bsBD.detect(vid).then(results=>{
+              if(results&&results.length){
+                const g = cleanGuia(results[0].rawValue);
+                if(g){
+                  stopBuscarScan();
+                  document.getElementById('buscarScanBox').style.display='none';
+                  document.getElementById('btnScanBuscar').style.borderColor='';
+                  document.getElementById('btnScanBuscar').style.color='';
+                  document.getElementById('si').value=g;
+                  doSearch();
+                  return;
+                }
+              }
+            }).catch(()=>{});
+            S._bsLoop = setTimeout(loop, 200);
+          }
+          loop();
+        });
+      } else {
+        document.getElementById('bsst').textContent='Usa Chrome Android para escaneo automático';
+      }
+    })
+    .catch(e=>{
+      document.getElementById('bsst').textContent='Permiso de cámara denegado';
+    });
+}
+
+function stopBuscarScan(){
+  clearTimeout(S._bsLoop);
+  S._bsBD = null;
+  if(S._bsStream){ S._bsStream.getTracks().forEach(t=>t.stop()); S._bsStream=null; }
 }
 
 async function doSearch(){
@@ -814,6 +902,119 @@ function cleanGuia(raw){
   if(/^26\d{14}$/.test(g)) return g;
   if(g.length>=6&&g.length<=60) return g;
   return null;
+}
+
+
+// ════════════════════════════════════════════════════════════════
+// AUDITORÍA
+// ════════════════════════════════════════════════════════════════
+
+async function pgAudit(){
+  setBar('Auditoría','');
+  setP('<div class="ld"><div class="sp"></div></div>');
+  try{
+    if(!S.contenedores.length){ const r=await api('srv_getContenedores'); S.contenedores=r.data||[]; }
+    let h=`<div class="st">Selecciona contenedor</div>`;
+    const todos = [...S.contenedores].sort((a,b)=>b['Fecha_Recepcion']<a['Fecha_Recepcion']?-1:1);
+    if(!todos.length){ h+=`<div class="ld"><p style="font-size:var(--fsm);color:var(--tx3)">Sin contenedores</p></div>`; }
+    todos.forEach(c=>{
+      const cls=c['Estado']==='En_Proceso'?'b-bl':c['Estado']==='Cerrado'?'b-gy':'b-am';
+      h+=`<div class="card" onclick="pgAuditCont('${esc(c['ID_Contenedor'])}')">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(139,92,246,.1)">📊</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct" style="font-family:var(--mo)">${esc(c['ID_Contenedor'])}</div>
+            <div class="cs">${esc(c['Fecha_Recepcion']||'')}</div>
+          </div>
+          <span class="b ${cls}">${esc(c['Estado']||'—')}</span>
+        </div></div>`;
+    });
+    setP(h);
+  }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
+}
+
+async function pgAuditCont(id){
+  if(id) S.cont=id;
+  setBar('Auditoría', S.cont||'');
+  setP('<div class="ld"><div class="sp"></div></div>');
+  try{
+    const [rRes, rMens] = await Promise.all([
+      api('srv_getResumenContenedor', S.cont),
+      api('srv_getPaquetesPorMensajero', S.cont)
+    ]);
+    const resumen = rRes.data||{};
+    const porMens = rMens.data||{};
+    const total   = rRes.total||0;
+
+    // Totales globales
+    let asig=0, verif=0, disp=0, fuera=0, adic=0;
+    Object.values(resumen).forEach(z=>{
+      asig  += z.asignados   ||0;
+      verif += z.verificados ||0;
+      disp  += z.disponibles ||0;
+      fuera += z.fuera       ||0;
+    });
+
+    let h=`
+    <button class="btn btn-g btn-s" onclick="pgAudit()" style="margin-bottom:12px">← Contenedores</button>
+    <div class="sg" style="grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+      <div class="sc"><div class="sn" style="color:var(--acc)">${total}</div><div class="sl">Total</div></div>
+      <div class="sc"><div class="sn" style="color:var(--grn)">${asig}</div><div class="sl">Asignados</div></div>
+      <div class="sc"><div class="sn" style="color:var(--amb)">${verif}</div><div class="sl">Verif.</div></div>
+      <div class="sc"><div class="sn" style="color:var(--red)">${fuera}</div><div class="sl">Fuera zona</div></div>
+    </div>`;
+
+    // Por mensajero
+    const mensEntries = Object.entries(porMens).sort((a,b)=>b[1].total-a[1].total);
+    if(mensEntries.length){
+      h+=`<div class="st">Por mensajero</div>`;
+      mensEntries.forEach(([nombre, d])=>{
+        const pct = total>0 ? Math.round(d.total/total*100) : 0;
+        const ini = nombre.charAt(0).toUpperCase();
+        h+=`<div class="card" style="cursor:default">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+            <div style="width:36px;height:36px;border-radius:50%;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#93c5fd;flex-shrink:0">${esc(ini)}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:var(--fsm);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
+              <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paquetes · ${pct}%</div>
+            </div>
+            <span class="b b-gr">${d.total}</span>
+          </div>
+          <div style="background:var(--bg3);border-radius:4px;height:5px;margin-bottom:7px">
+            <div style="background:var(--grn);height:5px;border-radius:4px;width:${pct}%"></div>
+          </div>
+          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap">
+            <span style="color:var(--grn)">● ${d.asignados||0} asig.</span>
+            <span style="color:var(--amb)">● ${d.disponibles||0} disp.</span>
+          </div>
+        </div>`;
+      });
+    }
+
+    // Por zona
+    const zonaEntries = Object.entries(resumen)
+      .filter(([z])=>!['FUERA_ZONA','Fuera_Zona','SIN_DATOS'].includes(z))
+      .sort((a,b)=>b[1].total-a[1].total);
+    if(zonaEntries.length){
+      h+=`<div class="st">Por zona</div>`;
+      zonaEntries.forEach(([zona, d])=>{
+        h+=`<div class="card" style="cursor:default">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+            <span style="font-weight:500;font-size:var(--fsm)">${esc(zona)}</span>
+            <span class="b b-gy">${d.total} paq.</span>
+          </div>
+          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap">
+            <span style="color:var(--grn)">● ${d.asignados||0} asig.</span>
+            <span style="color:var(--amb)">● ${d.verificados||0} verif.</span>
+            <span style="color:var(--acc)">● ${d.disponibles||0} disp.</span>
+            <span style="color:var(--red)">● ${d.fuera||0} fuera</span>
+          </div>
+        </div>`;
+      });
+    }
+
+    setP(h);
+  }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
 }
 
 go('home',false);
