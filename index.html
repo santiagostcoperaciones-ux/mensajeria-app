@@ -1102,42 +1102,39 @@ function cleanGuia(raw){
 
 
 // ════════════════════════════════════════════════════════════════
-// REASIGNACIÓN DE BOLSA SIN ASIGNAR
+// AUDITORÍA — 3 niveles: contenedor → mensajero → paquetes
 // ════════════════════════════════════════════════════════════════
 
 async function reasignarSinAsignar(contenedorId, sinAsignarId){
   const key = sinAsignarId || 'SIN_ASIGNAR';
-  const sel = document.getElementById('reasigSelect_' + CSS.escape(key));
+  const sel = document.getElementById('reasigSelect_' + key.replace(/[^a-zA-Z0-9]/g,'_'));
   const mensId = sel?.value;
   const mensNombre = sel?.options[sel?.selectedIndex]?.text;
   if(!mensId){toast('Selecciona un mensajero','er');return;}
   try{
     const r = await api('srv_reasignarMensajero', contenedorId, key, mensId, S.op);
     toast(`${r.reasignados||0} paquetes asignados a ${mensNombre} ✓`,'ok');
-    await pgAuditCont(contenedorId);
+    await pgAuditMens(contenedorId);
   }catch(e){toast('Error: '+e.message,'er');}
 }
 
-// ════════════════════════════════════════════════════════════════
-// AUDITORÍA
-// ════════════════════════════════════════════════════════════════
-
+// Nivel 1: lista de contenedores
 async function pgAudit(){
   setBar('Auditoría','');
   setP('<div class="ld"><div class="sp"></div></div>');
   try{
     if(!S.contenedores.length){ const r=await api('srv_getContenedores'); S.contenedores=r.data||[]; }
     let h=`<div class="st">Selecciona contenedor</div>`;
-    const todos = [...S.contenedores].sort((a,b)=>b['Fecha_Recepcion']<a['Fecha_Recepcion']?-1:1);
-    if(!todos.length){ h+=`<div class="ld"><p style="font-size:var(--fsm);color:var(--tx3)">Sin contenedores</p></div>`; }
+    const todos=[...S.contenedores].sort((a,b)=>b['Fecha_Recepcion']<a['Fecha_Recepcion']?-1:1);
+    if(!todos.length){ h+=`<div class="ld"><p style="color:var(--tx3);font-size:var(--fsm)">Sin contenedores</p></div>`; }
     todos.forEach(c=>{
-      const cls=c['Estado']==='En_Proceso'?'b-bl':c['Estado']==='Cerrado'?'b-gy':'b-am';
-      h+=`<div class="card" onclick="pgAuditCont('${esc(c['ID_Contenedor'])}')">
+      const cls=c['Estado']==='Cerrado'?'b-gy':'b-bl';
+      h+=`<div class="card" onclick="pgAuditMens('${esc(c['ID_Contenedor'])}')">
         <div class="card-row">
-          <div class="ci" style="background:rgba(139,92,246,.1)">📊</div>
+          <div class="ci" style="background:rgba(139,92,246,.1)">📦</div>
           <div style="flex:1;min-width:0">
             <div class="ct" style="font-family:var(--mo)">${esc(c['ID_Contenedor'])}</div>
-            <div class="cs">${esc(c['Fecha_Recepcion']||'')}</div>
+            <div class="cs">${esc(c['Fecha_Recepcion']||'')} · ${esc(c['Operador_Recepcion']||'')}</div>
           </div>
           <span class="b ${cls}">${esc(c['Estado']||'—')}</span>
         </div></div>`;
@@ -1146,10 +1143,12 @@ async function pgAudit(){
   }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
 }
 
-async function pgAuditCont(id){
+// Nivel 2: mensajeros del contenedor
+async function pgAuditMens(id){
   if(id) S.cont=id;
   setBar('Auditoría', S.cont||'');
   setP('<div class="ld"><div class="sp"></div></div>');
+  if(!S.mensajeros.length){const r=await api('srv_getMensajeros');S.mensajeros=r.data||[];}
   try{
     const [rRes, rMens] = await Promise.all([
       api('srv_getResumenContenedor', S.cont),
@@ -1159,13 +1158,12 @@ async function pgAuditCont(id){
     const porMens = rMens.data||{};
     const total   = rRes.total||0;
 
-    // Totales globales
-    let asig=0, verif=0, disp=0, fuera=0, adic=0;
+    let asig=0, sinAsig=0, disp=0, fuera=0;
     Object.values(resumen).forEach(z=>{
-      asig  += z.asignados   ||0;
-      verif += z.verificados ||0;
-      disp  += z.disponibles ||0;
-      fuera += z.fuera       ||0;
+      asig    += z.asignados  ||0;
+      sinAsig += z.sinAsignar ||0;
+      disp    += z.disponibles||0;
+      fuera   += z.fuera      ||0;
     });
 
     let h=`
@@ -1173,78 +1171,84 @@ async function pgAuditCont(id){
     <div class="sg" style="grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
       <div class="sc"><div class="sn" style="color:var(--acc)">${total}</div><div class="sl">Total</div></div>
       <div class="sc"><div class="sn" style="color:var(--grn)">${asig}</div><div class="sl">Asignados</div></div>
-      <div class="sc"><div class="sn" style="color:var(--amb)">${verif}</div><div class="sl">Verif.</div></div>
+      <div class="sc"><div class="sn" style="color:var(--amb)">${sinAsig}</div><div class="sl">Sin asig.</div></div>
       <div class="sc"><div class="sn" style="color:var(--red)">${fuera}</div><div class="sl">Fuera zona</div></div>
     </div>`;
 
-    // Por mensajero
-    const mensEntries = Object.entries(porMens).sort((a,b)=>b[1].total-a[1].total);
+    const mensEntries=Object.entries(porMens).sort((a,b)=>b[1].total-a[1].total);
     if(mensEntries.length){
-      h+=`<div class="st">Por mensajero</div>`;
-      mensEntries.forEach(([rawMensKey, d])=>{ const nombre = rawMensKey;
-        const pct = total>0 ? Math.round(d.total/total*100) : 0;
-        const ini = nombre.charAt(0).toUpperCase();
-        const esSinAsignar = nombre.startsWith('Sin asignar');
-        const bgColor = esSinAsignar ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
-        const txColor = esSinAsignar ? '#fcd34d' : '#93c5fd';
-        const icon    = esSinAsignar ? '📦' : ini;
-        h+=`<div class="card" style="cursor:default">
+      h+=`<div class="st">Por mensajero — toca para ver paquetes</div>`;
+      mensEntries.forEach(([rawKey, d])=>{
+        const nombre = rawKey;
+        const esSin = nombre.startsWith('Sin asignar');
+        const ini   = esSin ? '📦' : nombre.charAt(0).toUpperCase();
+        const bg    = esSin ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
+        const tx    = esSin ? '#fcd34d' : '#93c5fd';
+        const badge = esSin ? 'b-am' : 'b-gr';
+        h+=`<div class="card" onclick="pgAuditPaquetes('${esc(S.cont)}','${esc(rawKey)}')">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div style="width:36px;height:36px;border-radius:50%;background:${bgColor};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:${txColor};flex-shrink:0">${icon}</div>
+            <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:${tx};flex-shrink:0">${ini}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:var(--fsm);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
-              <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paquetes · ${pct}%</div>
+              <div style="font-size:var(--fsm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</div>
+              <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paquetes</div>
             </div>
-            <span class="b ${esSinAsignar?'b-am':'b-gr'}">${d.total}</span>
+            <span class="b ${badge}">${d.total}</span>
           </div>
-          <div style="background:var(--bg3);border-radius:4px;height:5px;margin-bottom:7px">
-            <div style="background:${esSinAsignar?'var(--amb)':'var(--grn)'};height:5px;border-radius:4px;width:${pct}%"></div>
-          </div>
-          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:${esSinAsignar?'10px':'0'}">
-            <span style="color:var(--grn)">● ${d.asignados||0} asig.</span>
-            <span style="color:var(--amb)">● ${d.sinAsignar||0} sin asig.</span>
-            <span style="color:var(--acc)">● ${d.disponibles||0} disp.</span>
-          </div>
-          ${esSinAsignar ? `
-          <div style="border-top:1px solid var(--brd);padding-top:9px">
-            <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:7px">Asignar esta bolsa a:</div>
-            <div style="display:flex;gap:7px">
-              <select class="inp" id="reasigSelect_${rawMensKey.replace(/[^a-zA-Z0-9]/g,"_")}" style="flex:1;height:38px;font-size:var(--fss)">
-                <option value="">Seleccionar mensajero...</option>
-                ${S.mensajeros.map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('')}
-              </select>
-              <button class="btn btn-a btn-s" onclick="reasignarSinAsignar('${esc(S.cont)}', '${esc(rawMensKey)}')">Asignar</button>
-            </div>
+          ${esSin ? `
+          <div style="border-top:1px solid var(--brd);padding-top:9px;display:flex;gap:7px" onclick="event.stopPropagation()">
+            <select class="inp" id="reasigSelect_${rawKey.replace(/[^a-zA-Z0-9]/g,'_')}" style="flex:1;height:38px;font-size:var(--fss)">
+              <option value="">Asignar mensajero...</option>
+              ${S.mensajeros.map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('')}
+            </select>
+            <button class="btn btn-a btn-s" onclick="event.stopPropagation();reasignarSinAsignar('${esc(S.cont)}','${esc(rawKey)}')">Asignar</button>
           </div>` : ''}
         </div>`;
       });
+    } else {
+      h+=`<div class="note">Sin paquetes asignados aún.</div>`;
     }
+    setP(h);
+  }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
+}
 
-    // Por zona
-    const zonaEntries = Object.entries(resumen)
-      .filter(([z])=>!['FUERA_ZONA','Fuera_Zona','SIN_DATOS'].includes(z))
-      .sort((a,b)=>b[1].total-a[1].total);
-    if(zonaEntries.length){
-      h+=`<div class="st">Por zona</div>`;
-      zonaEntries.forEach(([zona, d])=>{
+// Nivel 3: paquetes del mensajero
+async function pgAuditPaquetes(contenedorId, mensajeroId){
+  S.cont = contenedorId;
+  const label = mensajeroId.startsWith('Sin asignar') ? mensajeroId : mensajeroId;
+  setBar(label.length>22 ? label.substring(0,22)+'…' : label, contenedorId);
+  setP('<div class="ld"><div class="sp"></div></div>');
+  try{
+    const r = await api('srv_getPaquetesDetalleMensajero', contenedorId, mensajeroId);
+    const paquetes = r.data||[];
+
+    let h=`
+    <button class="btn btn-g btn-s" onclick="pgAuditMens('${esc(contenedorId)}')" style="margin-bottom:12px">← Mensajeros</button>
+    <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:10px">${paquetes.length} paquete(s) asignados</div>`;
+
+    if(!paquetes.length){
+      h+=`<div class="note">Sin paquetes.</div>`;
+    } else {
+      paquetes.forEach(p=>{
+        const estCls = p.estado==='Asignado'?'b-gr':p.estado==='Verificado'?'b-am':'b-gy';
         h+=`<div class="card" style="cursor:default">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-            <span style="font-weight:500;font-size:var(--fsm)">${esc(zona)}</span>
-            <span class="b b-gy">${d.total} paq.</span>
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+            <span style="font-family:var(--mo);font-size:var(--fss);word-break:break-all;flex:1">${esc(p.guia)}</span>
+            <span class="b ${estCls}" style="flex-shrink:0">${esc(p.zona)}</span>
           </div>
-          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap">
-            <span style="color:var(--grn)">● ${d.asignados||0} asig.</span>
-            <span style="color:var(--amb)">● ${d.verificados||0} verif.</span>
-            <span style="color:var(--acc)">● ${d.disponibles||0} disp.</span>
-            <span style="color:var(--red)">● ${d.fuera||0} fuera</span>
+          <div style="font-size:var(--fss);color:var(--tx2);line-height:1.8">
+            <div style="display:flex;align-items:flex-start;gap:5px">
+              <span style="flex-shrink:0">📍</span>
+              <span style="word-break:break-word">${esc(p.direccion)}</span>
+            </div>
+            <div style="color:var(--tx3);margin-top:2px">🕐 ${esc(p.fechaAsig)}</div>
           </div>
         </div>`;
       });
     }
-
     setP(h);
   }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
 }
+
 
 go('home',false);
 
