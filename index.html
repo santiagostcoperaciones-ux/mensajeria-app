@@ -136,16 +136,13 @@ hr.dv{border:none;border-top:1px solid var(--brd);margin:12px 0}
     <button class="nb on" id="nb0" onclick="go('home')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12L12 3l9 9M5 10v9a1 1 0 001 1h4v-4h4v4h4a1 1 0 001-1v-9"/></svg>Inicio
     </button>
-    <button class="nb" id="nb1" onclick="go('verificar-cfg')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>Verificar
-    </button>
-    <button class="nb" id="nb2" onclick="go('asignar')">
+    <button class="nb" id="nb1" onclick="go('asignar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Asignar
     </button>
-    <button class="nb" id="nb3" onclick="go('buscar')">
+    <button class="nb" id="nb2" onclick="go('buscar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Buscar
     </button>
-    <button class="nb" id="nb4" onclick="go('audit')">
+    <button class="nb" id="nb3" onclick="go('audit')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Auditoría
     </button>
   </nav>
@@ -198,14 +195,12 @@ async function api(fn, ...args){
 async function go(page, push=true){
   stopScan();
   if(push && page!=='home') S.stack.push(page);
-  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-scan':2,'asignar-lista':2,'buscar':3,'audit':4,'audit-cont':4};
+  const nm={home:0,'asignar':1,'asignar-scan':1,'asignar-lista':1,'buscar':2,'audit':3,'audit-cont':3};
   document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===nm[page]));
   document.getElementById('btnBack').classList.toggle('vis', S.stack.length>0 && page!=='home');
   switch(page){
     case 'home':           S.stack=[]; await pgHome(); break;
     case 'login':          pgLogin(); break;
-    case 'verificar-cfg':  await pgVerificarCfg(); break;
-    case 'verificando':    await pgVerificando(); break;
     case 'asignar':        await pgAsignar(); break;
     case 'asignar-scan':   await pgAsignarScan(); break;
     case 'asignar-lista':  pgAsignarLista(); break;
@@ -257,7 +252,7 @@ async function pgHome(){
     setP(h);
   }catch(e){setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`);}
 }
-async function selCont(id){ S.cont=id; await go('verificar-cfg'); }
+async function selCont(id){ S.cont=id; await go('asignar'); }
 
 // ── LOGIN ────────────────────────────────────────────────────────
 function pgLogin(){
@@ -416,7 +411,7 @@ async function pgVerificando(){
     <div id="bolsaAlert" style="display:none"></div>
     <div class="slast" id="slast" style="color:var(--tx3)">— apunta al código —</div>
     <div style="display:flex;gap:7px;margin-top:4px">
-      <button class="btn btn-g" style="flex:1" onclick="go('verificar-cfg')">Cambiar config</button>
+      <button class="btn btn-g" style="flex:1" onclick="go('asignar')">← Volver</button>
       <button class="btn btn-g btn-s" onclick="go('home')">Finalizar</button>
     </div>`);
   await initScan(onVerificacionCode);
@@ -521,7 +516,10 @@ async function pgAsignar(){
     </div>
     <div class="ig"><label class="lbl">Mensajero a asignar</label>
       <select class="inp" id="sMens">
-        <option value="">Seleccionar mensajero...</option>${mOpts}
+        <option value="">Seleccionar mensajero...</option>
+        <option value="SIN_ASIGNAR">📦 Sin asignar (definir después)</option>
+        <option disabled style="color:var(--tx3)">──────────────</option>
+        ${mOpts}
       </select>
     </div>
     <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">
@@ -1104,6 +1102,22 @@ function cleanGuia(raw){
 
 
 // ════════════════════════════════════════════════════════════════
+// REASIGNACIÓN DE BOLSA SIN ASIGNAR
+// ════════════════════════════════════════════════════════════════
+
+async function reasignarSinAsignar(contenedorId){
+  const sel = document.getElementById('reasigSelect_' + contenedorId);
+  const mensId = sel?.value;
+  const mensNombre = sel?.options[sel.selectedIndex]?.text;
+  if(!mensId){toast('Selecciona un mensajero','er');return;}
+  try{
+    const r = await api('srv_reasignarMensajero', contenedorId, 'SIN_ASIGNAR', mensId, S.op);
+    toast(`${r.reasignados||0} paquetes asignados a ${mensNombre} ✓`,'ok');
+    await pgAuditCont(contenedorId);
+  }catch(e){toast('Error: '+e.message,'er');}
+}
+
+// ════════════════════════════════════════════════════════════════
 // AUDITORÍA
 // ════════════════════════════════════════════════════════════════
 
@@ -1169,22 +1183,38 @@ async function pgAuditCont(id){
       mensEntries.forEach(([nombre, d])=>{
         const pct = total>0 ? Math.round(d.total/total*100) : 0;
         const ini = nombre.charAt(0).toUpperCase();
+        const esSinAsignar = nombre === 'Sin asignar';
+        const bgColor = esSinAsignar ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
+        const txColor = esSinAsignar ? '#fcd34d' : '#93c5fd';
+        const icon    = esSinAsignar ? '📦' : ini;
         h+=`<div class="card" style="cursor:default">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <div style="width:36px;height:36px;border-radius:50%;background:rgba(59,130,246,.15);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:#93c5fd;flex-shrink:0">${esc(ini)}</div>
+            <div style="width:36px;height:36px;border-radius:50%;background:${bgColor};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:${txColor};flex-shrink:0">${icon}</div>
             <div style="flex:1;min-width:0">
               <div style="font-size:var(--fsm);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(nombre)}</div>
               <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paquetes · ${pct}%</div>
             </div>
-            <span class="b b-gr">${d.total}</span>
+            <span class="b ${esSinAsignar?'b-am':'b-gr'}">${d.total}</span>
           </div>
           <div style="background:var(--bg3);border-radius:4px;height:5px;margin-bottom:7px">
-            <div style="background:var(--grn);height:5px;border-radius:4px;width:${pct}%"></div>
+            <div style="background:${esSinAsignar?'var(--amb)':'var(--grn)'};height:5px;border-radius:4px;width:${pct}%"></div>
           </div>
-          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap">
+          <div style="font-size:var(--fss);color:var(--tx2);display:flex;gap:14px;flex-wrap:wrap;margin-bottom:${esSinAsignar?'10px':'0'}">
             <span style="color:var(--grn)">● ${d.asignados||0} asig.</span>
-            <span style="color:var(--amb)">● ${d.disponibles||0} disp.</span>
+            <span style="color:var(--amb)">● ${d.sinAsignar||0} sin asig.</span>
+            <span style="color:var(--acc)">● ${d.disponibles||0} disp.</span>
           </div>
+          ${esSinAsignar ? `
+          <div style="border-top:1px solid var(--brd);padding-top:9px">
+            <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:7px">Asignar esta bolsa a:</div>
+            <div style="display:flex;gap:7px">
+              <select class="inp" id="reasigSelect_${esc(S.cont)}" style="flex:1;height:38px;font-size:var(--fss)">
+                <option value="">Seleccionar mensajero...</option>
+                ${S.mensajeros.map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('')}
+              </select>
+              <button class="btn btn-a btn-s" onclick="reasignarSinAsignar('${esc(S.cont)}')">Asignar</button>
+            </div>
+          </div>` : ''}
         </div>`;
       });
     }
