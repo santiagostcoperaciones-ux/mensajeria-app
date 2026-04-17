@@ -167,8 +167,13 @@ const S = {
   contenedores:[], mensajeros:[], plan:[],
   // Verificación
   scanN:0, scanning:false, _stream:null, _bd:null, _st:null,
-  // Contadores de zonas para bolsas (zona → {count, bolsa, limite})
-  zonaContadores: {},
+  escaneadosVerif: new Set(), // guías ya verificadas en esta sesión
+  // Asignación
+  asigMensId: null, asigMensNombre: null,
+  asigLista: [], // [{guia, zona, estado:'ok'|'reasignar'|'sobrante'}]
+  asigEscaneados: new Set(), // guías ya en la lista actual
+  // Scanner secundario (búsqueda/eliminación)
+  _bsStream:null, _bsBD:null, _bsLoop:null,
   stack: [],
 };
 
@@ -193,20 +198,21 @@ async function api(fn, ...args){
 async function go(page, push=true){
   stopScan();
   if(push && page!=='home') S.stack.push(page);
-  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-b':2,'buscar':3,'audit':4,'audit-cont':4};
+  const nm={home:0,'verificar-cfg':1,'verificando':1,'asignar':2,'asignar-scan':2,'asignar-lista':2,'buscar':3,'audit':4,'audit-cont':4};
   document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===nm[page]));
   document.getElementById('btnBack').classList.toggle('vis', S.stack.length>0 && page!=='home');
   switch(page){
-    case 'home':          S.stack=[]; await pgHome(); break;
-    case 'login':         pgLogin(); break;
-    case 'verificar-cfg': await pgVerificarCfg(); break;
-    case 'verificando':   await pgVerificando(); break;
-    case 'asignar':       await pgAsignar(); break;
-    case 'asignar-b':     await pgAsignarB(); break;
-    case 'buscar':        pgBuscar(); break;
-    case 'audit':         await pgAudit(); break;
-    case 'audit-cont':    await pgAuditCont(); break;
-    default:              await pgHome();
+    case 'home':           S.stack=[]; await pgHome(); break;
+    case 'login':          pgLogin(); break;
+    case 'verificar-cfg':  await pgVerificarCfg(); break;
+    case 'verificando':    await pgVerificando(); break;
+    case 'asignar':        await pgAsignar(); break;
+    case 'asignar-scan':   await pgAsignarScan(); break;
+    case 'asignar-lista':  pgAsignarLista(); break;
+    case 'buscar':         pgBuscar(); break;
+    case 'audit':          await pgAudit(); break;
+    case 'audit-cont':     await pgAuditCont(); break;
+    default:               await pgHome();
   }
 }
 function goBack(){
@@ -387,17 +393,8 @@ function recalcBolsas(zi){
 function iniciarVerificacion(){
   S.cont=document.getElementById('sCont')?.value||S.cont;
   if(!S.cont){toast('Selecciona un contenedor','er');return;}
-  if(!S.plan.length){toast('No hay zonas configuradas','er');return;}
-  // Leer valores actuales de los inputs antes de iniciar
-  S.plan.forEach((_,zi)=>recalcBolsas(zi));
-  // Inicializar contadores de zonas
-  S.zonaContadores={};
-  S.plan.forEach(z=>{
-    S.zonaContadores[z.zona]={
-      count:0, bolsaActual:1, bolsas:z.bolsas, tipo:z.tipo,
-    };
-  });
   S.scanN=0;
+  S.escaneadosVerif=new Set();
   go('verificando');
 }
 
@@ -426,29 +423,48 @@ async function pgVerificando(){
 }
 
 async function onVerificacionCode(guia){
+  // Evitar escaneo duplicado en la misma sesión
+  if(S.escaneadosVerif.has(guia)){
+    toast('Ya escaneado ✓','wa');
+    setTimeout(resumeScan, 800);
+    return;
+  }
+
+  function showZona(guia, zona, color){
+    const el=document.getElementById('slast');
+    if(!el) return;
+    el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px">
+      <span style="font-family:var(--mo);font-size:var(--fss)">${esc(guia)}</span>
+      <span style="font-size:var(--fss);font-weight:600;color:${color};background:rgba(0,0,0,.2);padding:2px 8px;border-radius:5px;flex-shrink:0">${esc(zona||'—')}</span>
+    </div>`;
+  }
+
+  function updateZonaCounters(zona){
+    if(!zona || zona==='ADICIONAL') return;
+    if(!S._zonaCountMap) S._zonaCountMap={};
+    S._zonaCountMap[zona]=(S._zonaCountMap[zona]||0)+1;
+    const el=document.getElementById('zonaCounters');
+    if(!el) return;
+    el.innerHTML=Object.entries(S._zonaCountMap)
+      .sort((a,b)=>b[1]-a[1])
+      .map(([z,n])=>`<div style="display:flex;justify-content:space-between;padding:4px 10px;background:var(--bg2);border-radius:6px;margin-bottom:3px;font-size:var(--fss)">
+        <span style="color:var(--tx2)">${esc(z)}</span>
+        <span style="font-family:var(--mo);color:var(--acc)">${n}</span>
+      </div>`).join('');
+  }
+
   try{
     const r = await api('srv_escanearVerificacion', guia, S.cont, S.op);
-
-    function showZona(guia, zona, color){
-      const el=document.getElementById('slast');
-      if(!el) return;
-      el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px">
-        <span style="font-family:var(--mo);font-size:var(--fss)">${esc(guia)}</span>
-        <span style="font-size:var(--fss);font-weight:600;color:${color};background:rgba(0,0,0,.2);padding:2px 8px;border-radius:5px;flex-shrink:0">${esc(zona||'—')}</span>
-      </div>`;
-    }
-
     switch(r.caso){
       case 'verificado':
+        S.escaneadosVerif.add(guia);
         S.scanN++;
         const ne=document.getElementById('ctrN');
         if(ne) ne.textContent=S.scanN;
         showZona(guia, r.zona, 'var(--grn)');
-        // Flash borde
         const cb=document.getElementById('ctrBox');
         if(cb){cb.style.borderColor='var(--grn)';setTimeout(()=>cb.style.borderColor='',500);}
-        // Actualizar contador de zona y verificar si completó una bolsa
-        verificarBolsa(guia, r.zona);
+        updateZonaCounters(r.zona);
         setTimeout(resumeScan, 350);
         break;
 
@@ -458,6 +474,7 @@ async function onVerificacionCode(guia){
           {l:'Sí, agregar como adicional', c:'btn-a', fn:async()=>{
             closeDlg();
             await api('srv_registrarAdicional', guia, S.cont, S.op);
+            S.escaneadosVerif.add(guia);
             S.scanN++; document.getElementById('ctrN').textContent=S.scanN;
             toast('Adicional registrado','wa'); setTimeout(resumeScan,300);
           }},
@@ -478,50 +495,14 @@ async function onVerificacionCode(guia){
   }catch(e){toast('Error: '+e.message,'er');setTimeout(resumeScan,1000);}
 }
 
-function verificarBolsa(guia, zona){
-  const zc=S.zonaContadores[zona];
-  if(!zc) return; // zona sin configuración de bolsa
-  zc.count++;
-  const limiteBolsaActual = zc.bolsas[zc.bolsaActual-1];
-  if(!limiteBolsaActual) return;
-
-  if(zc.count >= limiteBolsaActual && zc.bolsaActual < zc.bolsas.length){
-    // Bolsa completa — mostrar alerta
-    const bolsaCompletada = zc.bolsaActual;
-    const siguiente = zc.bolsaActual + 1;
-    const paqSiguiente = zc.bolsas[siguiente-1];
-    zc.bolsaActual++;
-    zc.count = 0;
-
-    const alertEl = document.getElementById('bolsaAlert');
-    if(alertEl){
-      alertEl.style.display='block';
-      alertEl.innerHTML=`<div class="bolsa-alert">
-        <div class="bolsa-num">${esc(zona)}</div>
-        <div class="bolsa-label">Bolsa ${bolsaCompletada} completa (${limiteBolsaActual} paq.)</div>
-        <div style="font-size:var(--fsm);color:var(--tx);margin-top:8px;font-weight:500">
-          ↓ Separa esta pila físicamente
-        </div>
-        <div style="font-size:var(--fss);color:var(--tx2);margin-top:4px">
-          Abre bolsa ${siguiente} → ${paqSiguiente} paquetes
-        </div>
-        <button class="btn btn-a btn-w" style="margin-top:10px" onclick="document.getElementById('bolsaAlert').style.display='none';resumeScan()">
-          Entendido — continuar escaneando
-        </button>
-      </div>`;
-      stopScan(); // Pausar hasta confirmar
-    }
-  }
-}
-
 // ════════════════════════════════════════════════════════════════
 // PASO 2 — ASIGNACIÓN A MENSAJEROS
-// Lógica: las bolsas ya están separadas físicamente desde la
-// verificación. Solo se selecciona qué mensajero lleva cada bolsa.
+// Flujo: seleccionar contenedor → seleccionar mensajero →
+// escanear paquetes → revisar lista → confirmar
 // ════════════════════════════════════════════════════════════════
 
 async function pgAsignar(){
-  setBar('Asignar mensajeros','');
+  setBar('Asignar','');
   setP('<div class="ld"><div class="sp"></div></div>');
   if(!S.contenedores.length){const r=await api('srv_getContenedores');S.contenedores=r.data||[];}
   if(!S.mensajeros.length){const r=await api('srv_getMensajeros');S.mensajeros=r.data||[];}
@@ -529,88 +510,305 @@ async function pgAsignar(){
   const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado')
     .map(c=>`<option value="${esc(c['ID_Contenedor'])}" ${S.cont===c['ID_Contenedor']?'selected':''}>${esc(c['ID_Contenedor'])}</option>`).join('');
 
-  // Cargar plan si hay contenedor seleccionado
-  if(S.cont && !S.plan.length){
-    try{const rp=await api('srv_getPlanificacion',S.cont);S.plan=rp.data||[];}catch(e){}
-  }
-
-  let zonaHtml='';
-  if(S.cont && S.plan.length){
-    const mOpts=S.mensajeros
-      .map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('');
-
-    zonaHtml=`<div class="st">Asignar mensajero por bolsa</div>
-    <div class="note" style="margin-bottom:12px">Las bolsas ya están separadas físicamente. Selecciona el mensajero de cada una y toca Confirmar.</div>`;
-
-    S.plan.forEach(z=>{
-      z.bolsas.forEach((n,bi)=>{
-        const bolsaId=`${z.zona}-B${bi+1}`;
-        const label = z.bolsas.length===1
-          ? `${z.zona} · ${n} paquetes`
-          : `${z.zona} · Bolsa ${bi+1} · ${n} paquetes`;
-        zonaHtml+=`<div class="pzcard">
-          <div class="pzhead">
-            <div>
-              <div class="pzname">${esc(z.zona)}</div>
-              <div style="font-size:var(--fss);color:var(--tx2)">${z.bolsas.length>1?`Bolsa ${bi+1} de ${z.bolsas.length} · `:''}${n} paquetes</div>
-            </div>
-            <span class="b b-gy">${n} paq.</span>
-          </div>
-          <div class="ig" style="margin-bottom:0">
-            <label class="lbl">Mensajero</label>
-            <select class="inp" id="mens_${esc(bolsaId)}">
-              <option value="">Seleccionar mensajero...</option>${mOpts}
-            </select>
-          </div>
-        </div>`;
-      });
-    });
-
-    zonaHtml+=`<button class="btn btn-p btn-w mt" onclick="confirmarAsignaciones()">Confirmar todas las asignaciones</button>`;
-  } else if(S.cont){
-    zonaHtml=`<div class="note">No hay plan cargado. Asegúrate de haber completado la verificación primero.</div>`;
-  } else {
-    zonaHtml=`<div class="note">Selecciona un contenedor para ver las bolsas a asignar.</div>`;
-  }
+  const mOpts=S.mensajeros
+    .map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('');
 
   setP(`<div>
     <div class="ig"><label class="lbl">Contenedor</label>
-      <select class="inp" id="sCont2" onchange="S.cont=this.value;S.plan=[];pgAsignar()">
+      <select class="inp" id="sCont2" onchange="S.cont=this.value">
         <option value="">Seleccionar...</option>${cOpts}
       </select>
     </div>
-    ${zonaHtml}
+    <div class="ig"><label class="lbl">Mensajero a asignar</label>
+      <select class="inp" id="sMens">
+        <option value="">Seleccionar mensajero...</option>${mOpts}
+      </select>
+    </div>
+    <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>
+      Iniciar escaneo de asignación
+    </button>
   </div>`);
 }
 
-async function confirmarAsignaciones(){
-  // Recoger todas las selecciones
-  const asignaciones=[];
-  let ok=true;
-  S.plan.forEach(z=>{
-    z.bolsas.forEach((n,bi)=>{
-      const bolsaId=`${z.zona}-B${bi+1}`;
-      const mensId=document.getElementById('mens_'+bolsaId)?.value;
-      if(!mensId){
-        toast(`Falta mensajero en ${z.zona} Bolsa ${bi+1}`,'er');
-        ok=false; return;
-      }
-      asignaciones.push({zona:z.zona, bolsaId, mensId, n});
-    });
-  });
-  if(!ok) return;
+function iniciarAsignacion(){
+  const cont = document.getElementById('sCont2')?.value || S.cont;
+  const mensEl = document.getElementById('sMens');
+  const mensId = mensEl?.value;
+  const mensNombre = mensEl?.options[mensEl.selectedIndex]?.text;
+  if(!cont){toast('Selecciona un contenedor','er');return;}
+  if(!mensId){toast('Selecciona un mensajero','er');return;}
+  S.cont = cont;
+  S.asigMensId = mensId;
+  S.asigMensNombre = mensNombre;
+  S.asigLista = [];
+  S.asigEscaneados = new Set();
+  go('asignar-scan');
+}
 
-  setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Asignando...</span></div>');
-  let totalAsignados=0;
-  for(const a of asignaciones){
-    try{
-      const r=await api('srv_asignarZonaCompleta', S.cont, a.zona, a.mensId, a.bolsaId, S.op);
-      totalAsignados+=(r.asignados||0);
-    }catch(e){toast('Error en '+a.zona+': '+e.message,'er');}
+async function pgAsignarScan(){
+  setBar('Asignando a', S.asigMensNombre||'');
+  setP(`
+    <div id="swrap"><div id="sinner">
+      <video id="svid" playsinline autoplay muted></video>
+      <div class="sov"><div class="sbox"><div class="sc1"></div><div class="sc2"></div><div class="sline"></div></div></div>
+    </div></div>
+    <div class="sst" id="sst">Iniciando cámara...</div>
+    <div class="ctr" id="ctrBox" style="cursor:pointer" onclick="go('asignar-lista')">
+      <div>
+        <div class="ctrn" id="ctrNA">${S.asigLista.length}</div>
+        <div style="font-size:var(--fss);color:var(--tx2)">en lista</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:var(--fsm);font-weight:500">${esc(S.asigMensNombre||'')}</div>
+        <div style="font-size:var(--fss);color:var(--acc)">Ver lista →</div>
+      </div>
+    </div>
+    <div class="slast" id="slast" style="color:var(--tx3)">— apunta al código —</div>
+    <div style="display:flex;gap:7px;margin-top:8px">
+      <button class="btn btn-g" style="flex:1" onclick="go('asignar-lista')">📋 Ver lista (${S.asigLista.length})</button>
+      <button class="btn btn-p btn-s" onclick="confirmarAsignacionFinal()" ${S.asigLista.length===0?'disabled':''}>Confirmar</button>
+    </div>`);
+  await initScan(onAsignacionCode);
+}
+
+async function onAsignacionCode(guia){
+  // Duplicado en la lista actual
+  if(S.asigEscaneados.has(guia)){
+    toast('Ya está en la lista','wa');
+    setTimeout(resumeScan, 700);
+    return;
   }
-  toast(`${totalAsignados} paquetes asignados ✓`,'ok');
-  S.plan=[];
-  await pgAsignar();
+
+  function showResult(guia, label, color){
+    const el=document.getElementById('slast');
+    if(!el) return;
+    el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;width:100%;gap:8px">
+      <span style="font-family:var(--mo);font-size:var(--fss)">${esc(guia)}</span>
+      <span style="font-size:var(--fss);font-weight:600;color:${color};background:rgba(0,0,0,.2);padding:2px 8px;border-radius:5px;flex-shrink:0">${esc(label)}</span>
+    </div>`;
+    const cb=document.getElementById('ctrBox');
+    if(cb){cb.style.borderColor=color;setTimeout(()=>cb.style.borderColor='',600);}
+  }
+
+  function addToList(guia, zona, estado){
+    S.asigLista.push({guia, zona, estado});
+    S.asigEscaneados.add(guia);
+    const ne=document.getElementById('ctrNA');
+    if(ne) ne.textContent=S.asigLista.length;
+    // Update button count
+    const listBtn=document.querySelector('.btn[onclick*="asignar-lista"]');
+    if(listBtn) listBtn.textContent=`📋 Ver lista (${S.asigLista.length})`;
+    const confBtn=document.querySelector('.btn[onclick*="confirmarAsignacion"]');
+    if(confBtn) confBtn.removeAttribute('disabled');
+  }
+
+  try{
+    const r = await api('srv_consultarPaqueteAsignacion', guia, S.cont);
+
+    if(r.caso === 'disponible'){
+      // Paquete libre — agregar directamente
+      addToList(guia, r.zona||'—', 'ok');
+      showResult(guia, r.zona||'OK', 'var(--grn)');
+      setTimeout(resumeScan, 350);
+
+    } else if(r.caso === 'asignado'){
+      // Ya tiene mensajero — preguntar
+      stopScan();
+      showResult(guia, 'ASIGNADO', 'var(--amb)');
+      dialog(
+        'Paquete ya asignado',
+        `Este paquete está asignado a:\n${r.mensajeroActual||'otro mensajero'}\n\n¿Reasignar a ${S.asigMensNombre}?`,
+        guia,
+        [
+          {l:`Sí, reasignar a ${S.asigMensNombre}`, c:'btn-a', fn:()=>{
+            closeDlg();
+            addToList(guia, r.zona||'—', 'reasignar');
+            setTimeout(resumeScan, 200);
+          }},
+          {l:'No, dejar como está', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
+        ]
+      );
+
+    } else if(r.caso === 'no_encontrado'){
+      // Sobrante — preguntar si agregar
+      stopScan();
+      showResult(guia, 'SOBRANTE', 'var(--red)');
+      dialog(
+        'Paquete sobrante',
+        'Este paquete no está en la lista del contenedor.\nSe marcará como "Sobrante" y se asignará al mensajero.',
+        guia,
+        [
+          {l:'Agregar como sobrante', c:'btn-d', fn:()=>{
+            closeDlg();
+            addToList(guia, 'SOBRANTE', 'sobrante');
+            setTimeout(resumeScan, 200);
+          }},
+          {l:'Cancelar', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
+        ]
+      );
+
+    } else {
+      toast(r.error||'Error consultando paquete','er');
+      setTimeout(resumeScan, 1000);
+    }
+  }catch(e){toast('Error: '+e.message,'er');setTimeout(resumeScan,1000);}
+}
+
+function pgAsignarLista(){
+  stopScan();
+  setBar('Lista de asignación', S.asigMensNombre||'');
+
+  // Scanner para buscar y eliminar
+  let listHtml = '';
+  if(!S.asigLista.length){
+    listHtml = `<div class="ld" style="padding:30px"><p style="color:var(--tx3);font-size:var(--fsm)">Sin paquetes escaneados aún</p></div>`;
+  } else {
+    listHtml = S.asigLista.map((p,i)=>{
+      const col = p.estado==='ok'?'var(--grn)':p.estado==='reasignar'?'var(--amb)':'var(--red)';
+      const lbl = p.estado==='ok'?'OK':p.estado==='reasignar'?'REASIGNAR':'SOBRANTE';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--brd)">
+        <div style="flex:1;min-width:0">
+          <div style="font-family:var(--mo);font-size:var(--fss)">${esc(p.guia)}</div>
+          <div style="font-size:var(--fss);color:var(--tx2)">${esc(p.zona)}</div>
+        </div>
+        <span style="font-size:10px;font-weight:600;color:${col};background:rgba(0,0,0,.2);padding:2px 7px;border-radius:4px;flex-shrink:0">${lbl}</span>
+        <button onclick="quitarDeListaAsig(${i})" style="background:rgba(239,68,68,.15);border:none;color:#fca5a5;border-radius:6px;padding:4px 8px;font-size:var(--fss);cursor:pointer;flex-shrink:0">✕</button>
+      </div>`;
+    }).join('');
+  }
+
+  setP(`
+    <div style="margin-bottom:12px">
+      <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:8px">Escanea para eliminar un paquete de la lista:</div>
+      <div style="display:flex;gap:7px">
+        <input class="inp" id="quitarInput" style="flex:1;height:40px;font-size:var(--fss)" placeholder="Buscar por guía..." oninput="filtrarListaAsig(this.value)">
+        <button class="btn btn-g btn-s" id="btnScanQuitar" onclick="toggleScanQuitar()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>
+        </button>
+      </div>
+      <div id="scanQuitarBox" style="display:none;margin-top:8px">
+        <div style="padding-top:55%;background:#000;border-radius:var(--r);overflow:hidden;position:relative">
+          <video id="qvid" playsinline autoplay muted style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"></video>
+        </div>
+        <div id="qst" style="font-size:var(--fss);color:var(--tx2);text-align:center;margin-top:6px">Apunta al código a eliminar</div>
+      </div>
+    </div>
+    <div class="st">${S.asigLista.length} paquete(s)</div>
+    <div id="listaItems">${listHtml}</div>
+    <div style="display:flex;gap:7px;margin-top:12px">
+      <button class="btn btn-g" style="flex:1" onclick="go('asignar-scan')">← Seguir escaneando</button>
+      <button class="btn btn-p btn-s" onclick="confirmarAsignacionFinal()" ${S.asigLista.length===0?'disabled':''}>Confirmar (${S.asigLista.length})</button>
+    </div>`);
+}
+
+function filtrarListaAsig(val){
+  const q=val.trim().toLowerCase();
+  const items=document.getElementById('listaItems');
+  if(!items) return;
+  if(!q){pgAsignarLista();return;}
+  // Highlight matching items
+  const filtered=S.asigLista.filter(p=>p.guia.toLowerCase().includes(q));
+  if(!filtered.length){
+    items.innerHTML=`<div style="color:var(--tx3);font-size:var(--fsm);padding:12px 0">Sin resultados</div>`;
+    return;
+  }
+  items.innerHTML=filtered.map((p,i)=>{
+    const col=p.estado==='ok'?'var(--grn)':p.estado==='reasignar'?'var(--amb)':'var(--red)';
+    const lbl=p.estado==='ok'?'OK':p.estado==='reasignar'?'REASIGNAR':'SOBRANTE';
+    const realIdx=S.asigLista.findIndex(x=>x.guia===p.guia);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--brd)">
+      <div style="flex:1;min-width:0">
+        <div style="font-family:var(--mo);font-size:var(--fss)">${esc(p.guia)}</div>
+        <div style="font-size:var(--fss);color:var(--tx2)">${esc(p.zona)}</div>
+      </div>
+      <span style="font-size:10px;font-weight:600;color:${col};background:rgba(0,0,0,.2);padding:2px 7px;border-radius:4px;flex-shrink:0">${lbl}</span>
+      <button onclick="quitarDeListaAsig(${realIdx})" style="background:rgba(239,68,68,.15);border:none;color:#fca5a5;border-radius:6px;padding:4px 8px;font-size:var(--fss);cursor:pointer;flex-shrink:0">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function quitarDeListaAsig(idx){
+  const p=S.asigLista[idx];
+  if(!p) return;
+  S.asigLista.splice(idx,1);
+  S.asigEscaneados.delete(p.guia);
+  toast('Paquete eliminado de la lista','wa');
+  pgAsignarLista();
+}
+
+function toggleScanQuitar(){
+  const box=document.getElementById('scanQuitarBox');
+  const btn=document.getElementById('btnScanQuitar');
+  if(box.style.display==='none'){
+    box.style.display='block';
+    btn.style.borderColor='var(--acc)';
+    initScanQuitar();
+  } else {
+    box.style.display='none';
+    btn.style.borderColor='';
+    stopScanQuitar();
+  }
+}
+
+function initScanQuitar(){
+  const vid=document.getElementById('qvid');
+  if(!vid) return;
+  navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}})
+    .then(stream=>{
+      vid.srcObject=stream; S._bsStream=stream;
+      vid.play().catch(()=>{});
+      if('BarcodeDetector' in window){
+        BarcodeDetector.getSupportedFormats().then(fmts=>{
+          S._bsBD=new BarcodeDetector({formats:fmts});
+          function loop(){
+            if(!S._bsStream||!document.getElementById('qvid')) return;
+            S._bsBD.detect(vid).then(results=>{
+              if(results&&results.length){
+                const g=cleanGuia(results[0].rawValue);
+                if(g){
+                  stopScanQuitar();
+                  document.getElementById('scanQuitarBox').style.display='none';
+                  document.getElementById('btnScanQuitar').style.borderColor='';
+                  // Find and remove
+                  const idx=S.asigLista.findIndex(p=>p.guia===g);
+                  if(idx>=0){
+                    quitarDeListaAsig(idx);
+                  } else {
+                    toast('Paquete no está en la lista','er');
+                    pgAsignarLista();
+                  }
+                  return;
+                }
+              }
+            }).catch(()=>{});
+            S._bsLoop=setTimeout(loop,200);
+          }
+          loop();
+        });
+      }
+    }).catch(()=>{document.getElementById('qst').textContent='Permiso de cámara denegado';});
+}
+
+function stopScanQuitar(){
+  clearTimeout(S._bsLoop);
+  S._bsBD=null;
+  if(S._bsStream){S._bsStream.getTracks().forEach(t=>t.stop());S._bsStream=null;}
+}
+
+async function confirmarAsignacionFinal(){
+  if(!S.asigLista.length){toast('Sin paquetes en la lista','er');return;}
+  stopScan(); stopScanQuitar();
+  setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Guardando asignaciones...</span></div>');
+  try{
+    const r = await api('srv_asignarPaquetesEscaneados', S.cont, S.asigMensId, S.asigLista, S.op);
+    toast(`${r.asignados||S.asigLista.length} paquetes asignados ✓`,'ok');
+    S.asigLista=[]; S.asigEscaneados=new Set();
+    await pgAsignar();
+  }catch(e){
+    toast('Error: '+e.message,'er');
+    setTimeout(()=>pgAsignarLista(),1000);
+  }
 }
 
 
