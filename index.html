@@ -1105,13 +1105,14 @@ function cleanGuia(raw){
 // REASIGNACIÓN DE BOLSA SIN ASIGNAR
 // ════════════════════════════════════════════════════════════════
 
-async function reasignarSinAsignar(contenedorId){
-  const sel = document.getElementById('reasigSelect_' + contenedorId);
+async function reasignarSinAsignar(contenedorId, sinAsignarId){
+  const key = sinAsignarId || 'SIN_ASIGNAR';
+  const sel = document.getElementById('reasigSelect_' + CSS.escape(key));
   const mensId = sel?.value;
-  const mensNombre = sel?.options[sel.selectedIndex]?.text;
+  const mensNombre = sel?.options[sel?.selectedIndex]?.text;
   if(!mensId){toast('Selecciona un mensajero','er');return;}
   try{
-    const r = await api('srv_reasignarMensajero', contenedorId, 'SIN_ASIGNAR', mensId, S.op);
+    const r = await api('srv_reasignarMensajero', contenedorId, key, mensId, S.op);
     toast(`${r.reasignados||0} paquetes asignados a ${mensNombre} ✓`,'ok');
     await pgAuditCont(contenedorId);
   }catch(e){toast('Error: '+e.message,'er');}
@@ -1180,10 +1181,10 @@ async function pgAuditCont(id){
     const mensEntries = Object.entries(porMens).sort((a,b)=>b[1].total-a[1].total);
     if(mensEntries.length){
       h+=`<div class="st">Por mensajero</div>`;
-      mensEntries.forEach(([nombre, d])=>{
+      mensEntries.forEach(([rawMensKey, d])=>{ const nombre = rawMensKey;
         const pct = total>0 ? Math.round(d.total/total*100) : 0;
         const ini = nombre.charAt(0).toUpperCase();
-        const esSinAsignar = nombre === 'Sin asignar';
+        const esSinAsignar = nombre.startsWith('Sin asignar');
         const bgColor = esSinAsignar ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
         const txColor = esSinAsignar ? '#fcd34d' : '#93c5fd';
         const icon    = esSinAsignar ? '📦' : ini;
@@ -1208,11 +1209,11 @@ async function pgAuditCont(id){
           <div style="border-top:1px solid var(--brd);padding-top:9px">
             <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:7px">Asignar esta bolsa a:</div>
             <div style="display:flex;gap:7px">
-              <select class="inp" id="reasigSelect_${esc(S.cont)}" style="flex:1;height:38px;font-size:var(--fss)">
+              <select class="inp" id="reasigSelect_${rawMensKey.replace(/[^a-zA-Z0-9]/g,"_")}" style="flex:1;height:38px;font-size:var(--fss)">
                 <option value="">Seleccionar mensajero...</option>
                 ${S.mensajeros.map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('')}
               </select>
-              <button class="btn btn-a btn-s" onclick="reasignarSinAsignar('${esc(S.cont)}')">Asignar</button>
+              <button class="btn btn-a btn-s" onclick="reasignarSinAsignar('${esc(S.cont)}', '${esc(rawMensKey)}')">Asignar</button>
             </div>
           </div>` : ''}
         </div>`;
