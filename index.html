@@ -614,15 +614,20 @@ async function onAsignacionCode(guia){
       // Ya tiene mensajero — preguntar
       stopScan();
       showResult(guia, 'ASIGNADO', 'var(--amb)');
-      const mensActualLabel = r.mensajeroActual || 'otro mensajero';
+      // Resolver nombre del mensajero actual
+      const mensIdActual = r.mensajeroId || r.mensajeroActual || '';
+      const mensObjActual = S.mensajeros.find(m => String(m['ID_Mensajero']) === String(mensIdActual));
+      const mensNombreActual = mensObjActual ? mensObjActual['Nombre_Completo'] : (r.mensajeroActual || mensIdActual || 'otro mensajero');
+      // Guardar en S para no perder en el closure serializado
+      S._pendingGuia = guia; S._pendingZona = r.zona||'—';
       dialog(
         'Paquete ya asignado',
-        `Zona: ${r.zona||'—'}\nAsignado a: ${mensActualLabel}\n\n¿Reasignar a ${S.asigMensNombre}?`,
+        `Zona: ${r.zona||'—'}\nAsignado a: ${mensNombreActual}\n\n¿Reasignar a ${S.asigMensNombre}?`,
         guia,
         [
           {l:`Sí, reasignar a ${S.asigMensNombre}`, c:'btn-a', fn:()=>{
             closeDlg();
-            addToList(guia, r.zona||'—', 'reasignar');
+            addToList(S._pendingGuia, S._pendingZona, 'reasignar');
             setTimeout(resumeScan, 200);
           }},
           {l:'No, dejar como está', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
@@ -633,6 +638,7 @@ async function onAsignacionCode(guia){
       // Sobrante — preguntar si agregar
       stopScan();
       showResult(guia, 'SOBRANTE', 'var(--red)');
+      S._pendingGuia = guia; S._pendingZona = 'SOBRANTE';
       dialog(
         'Paquete sobrante',
         'Este paquete no está en la lista del contenedor.\nSe marcará como "Sobrante" y se asignará al mensajero.',
@@ -640,7 +646,7 @@ async function onAsignacionCode(guia){
         [
           {l:'Agregar como sobrante', c:'btn-d', fn:()=>{
             closeDlg();
-            addToList(guia, 'SOBRANTE', 'sobrante');
+            addToList(S._pendingGuia, S._pendingZona, 'sobrante');
             setTimeout(resumeScan, 200);
           }},
           {l:'Cancelar', c:'btn-g', fn:()=>{closeDlg();resumeScan();}}
