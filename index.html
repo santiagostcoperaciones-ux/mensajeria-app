@@ -224,7 +224,7 @@ async function pgHome(){
   try{
     const [cr,mr]=await Promise.all([api('srv_getContenedores'),api('srv_getMensajeros')]);
     S.contenedores=cr.data||[]; S.mensajeros=mr.data||[];
-    const act=S.contenedores.filter(c=>c['Estado']!=='Cerrado');
+    const act=S.contenedores.filter(c=>c['Estado']!=='Cerrado' && c['ID_Contenedor'] && String(c['ID_Contenedor']).trim());
     const cer=S.contenedores.filter(c=>c['Estado']==='Cerrado').length;
     let h=`<div class="sg">
       <div class="sc"><div class="sn" style="color:var(--acc)">${act.length}</div><div class="sl">Activos</div></div>
@@ -284,7 +284,7 @@ async function pgVerificarCfg(){
   setBar('Verificar contenedor','');
   setP('<div class="ld"><div class="sp"></div></div>');
   if(!S.contenedores.length){const r=await api('srv_getContenedores');S.contenedores=r.data||[];}
-  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado')
+  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado' && c['ID_Contenedor'] && String(c['ID_Contenedor']).trim())
     .map(c=>`<option value="${esc(c['ID_Contenedor'])}" ${S.cont===c['ID_Contenedor']?'selected':''}>${esc(c['ID_Contenedor'])}</option>`).join('');
 
   let planHtml='';
@@ -502,7 +502,7 @@ async function pgAsignar(){
   if(!S.contenedores.length){const r=await api('srv_getContenedores');S.contenedores=r.data||[];}
   if(!S.mensajeros.length){const r=await api('srv_getMensajeros');S.mensajeros=r.data||[];}
 
-  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado')
+  const cOpts=S.contenedores.filter(c=>c['Estado']!=='Cerrado' && c['ID_Contenedor'] && String(c['ID_Contenedor']).trim())
     .map(c=>`<option value="${esc(c['ID_Contenedor'])}" ${S.cont===c['ID_Contenedor']?'selected':''}>${esc(c['ID_Contenedor'])}</option>`).join('');
 
   const mOpts=S.mensajeros
@@ -607,16 +607,17 @@ async function onAsignacionCode(guia){
     if(r.caso === 'disponible'){
       // Paquete libre — agregar directamente
       addToList(guia, r.zona||'—', 'ok');
-      showResult(guia, r.zona||'OK', 'var(--grn)');
+      showResult(guia, r.zona||'✓ LIBRE', 'var(--grn)');
       setTimeout(resumeScan, 350);
 
     } else if(r.caso === 'asignado'){
       // Ya tiene mensajero — preguntar
       stopScan();
       showResult(guia, 'ASIGNADO', 'var(--amb)');
+      const mensActualLabel = r.mensajeroActual || 'otro mensajero';
       dialog(
         'Paquete ya asignado',
-        `Este paquete está asignado a:\n${r.mensajeroActual||'otro mensajero'}\n\n¿Reasignar a ${S.asigMensNombre}?`,
+        `Zona: ${r.zona||'—'}\nAsignado a: ${mensActualLabel}\n\n¿Reasignar a ${S.asigMensNombre}?`,
         guia,
         [
           {l:`Sí, reasignar a ${S.asigMensNombre}`, c:'btn-a', fn:()=>{
@@ -1125,7 +1126,7 @@ async function pgAudit(){
   try{
     if(!S.contenedores.length){ const r=await api('srv_getContenedores'); S.contenedores=r.data||[]; }
     let h=`<div class="st">Selecciona contenedor</div>`;
-    const todos=[...S.contenedores].sort((a,b)=>b['Fecha_Recepcion']<a['Fecha_Recepcion']?-1:1);
+    const todos=[...S.contenedores].filter(x=>x['ID_Contenedor']&&String(x['ID_Contenedor']).trim()).sort((a,b)=>b['Fecha_Recepcion']<a['Fecha_Recepcion']?-1:1);
     if(!todos.length){ h+=`<div class="ld"><p style="color:var(--tx3);font-size:var(--fsm)">Sin contenedores</p></div>`; }
     todos.forEach(c=>{
       const cls=c['Estado']==='Cerrado'?'b-gy':'b-bl';
@@ -1181,7 +1182,13 @@ async function pgAuditMens(id){
       mensEntries.forEach(([rawKey, d])=>{
         const nombre = rawKey;
         const esSin = nombre.startsWith('Sin asignar');
-        const ini   = esSin ? '📦' : nombre.charAt(0).toUpperCase();
+        // Resolver nombre del mensajero si el rawKey es un ID numérico
+        let displayNombre = nombre;
+        if (!esSin && /^\d+$/.test(nombre)) {
+          const m = S.mensajeros.find(x => String(x['ID_Mensajero']) === nombre);
+          if (m) displayNombre = m['Nombre_Completo'] || nombre;
+        }
+        const ini   = esSin ? '📦' : displayNombre.charAt(0).toUpperCase();
         const bg    = esSin ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
         const tx    = esSin ? '#fcd34d' : '#93c5fd';
         const badge = esSin ? 'b-am' : 'b-gr';
@@ -1189,8 +1196,8 @@ async function pgAuditMens(id){
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
             <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:${tx};flex-shrink:0">${ini}</div>
             <div style="flex:1;min-width:0">
-              <div style="font-size:var(--fsm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(nombre)}</div>
-              <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paquetes</div>
+              <div style="font-size:var(--fsm);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(displayNombre)}</div>
+              <div style="font-size:var(--fss);color:var(--tx2)">${d.total} paq. · ${d.asignados||0} asig. · ${d.sinAsignar||0} sin asig.</div>
             </div>
             <span class="b ${badge}">${d.total}</span>
           </div>
@@ -1230,11 +1237,16 @@ async function pgAuditPaquetes(contenedorId, mensajeroId){
     } else {
       paquetes.forEach(p=>{
         const estCls = p.estado==='Asignado'?'b-gr':p.estado==='Verificado'?'b-am':'b-gy';
+        const estLabel = p.estado==='Asignado'?'Asignado':p.estado==='Verificado'?'Sin asig.':p.estado||'—';
         h+=`<div class="card" style="cursor:default">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:5px">
             <span style="font-family:var(--mo);font-size:var(--fss);word-break:break-all;flex:1">${esc(p.guia)}</span>
-            <span class="b ${estCls}" style="flex-shrink:0">${esc(p.zona)}</span>
+            <div style="display:flex;gap:5px;flex-shrink:0">
+              <span class="b b-gy">${esc(p.zona)}</span>
+              <span class="b ${estCls}">${estLabel}</span>
+            </div>
           </div>
+          ${p.destinatario ? `<div style="font-size:var(--fsm);font-weight:500;margin-bottom:4px">${esc(p.destinatario)}</div>` : ''}
           <div style="font-size:var(--fss);color:var(--tx2);line-height:1.8">
             <div style="display:flex;align-items:flex-start;gap:5px">
               <span style="flex-shrink:0">📍</span>
