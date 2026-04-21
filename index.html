@@ -1111,16 +1111,23 @@ function cleanGuia(raw){
 // AUDITORÍA — 3 niveles: contenedor → mensajero → paquetes
 // ════════════════════════════════════════════════════════════════
 
-async function reasignarSinAsignar(contenedorId, sinAsignarId){
-  const key = sinAsignarId || 'SIN_ASIGNAR';
+async function reasignarSinAsignar(contenedorId, sinAsignarKey){
+  const key = sinAsignarKey || 'SIN_ASIGNAR';
   const sel = document.getElementById('reasigSelect_' + key.replace(/[^a-zA-Z0-9]/g,'_'));
   const mensId = sel?.value;
   const mensNombre = sel?.options[sel?.selectedIndex]?.text;
   if(!mensId){toast('Selecciona un mensajero','er');return;}
   try{
     const r = await api('srv_reasignarMensajero', contenedorId, key, mensId, S.op);
-    toast(`${r.reasignados||0} paquetes asignados a ${mensNombre} ✓`,'ok');
-    await pgAuditMens(contenedorId);
+    if(r.reasignados > 0){
+      toast(`${r.reasignados} paquetes asignados a ${mensNombre} ✓`,'ok');
+      await pgAuditMens(contenedorId);
+    } else {
+      // Mostrar debug: qué clave se buscó vs qué hay en el sheet
+      const debug = r.debug || {};
+      const disponibles = (debug.keysDisponibles||[]).join(', ') || 'ninguna';
+      toast(`0 asignados. Buscado: "${debug.buscado||key}" | En sheet: ${disponibles}`,'er');
+    }
   }catch(e){toast('Error: '+e.message,'er');}
 }
 
