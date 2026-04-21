@@ -570,6 +570,17 @@ async function pgAsignarScan(){
   await initScan(onAsignacionCode);
 }
 
+function addToList(guia, zona, estado){
+  S.asigLista.push({guia, zona, estado});
+  S.asigEscaneados.add(guia);
+  const ne=document.getElementById('ctrNA');
+  if(ne) ne.textContent=S.asigLista.length;
+  const listBtn=document.querySelector('.btn[onclick*="asignar-lista"]');
+  if(listBtn) listBtn.textContent=`📋 Ver lista (${S.asigLista.length})`;
+  const confBtn=document.querySelector('.btn[onclick*="confirmarAsignacion"]');
+  if(confBtn) confBtn.removeAttribute('disabled');
+}
+
 async function onAsignacionCode(guia){
   // Duplicado en la lista actual
   if(S.asigEscaneados.has(guia)){
@@ -587,18 +598,6 @@ async function onAsignacionCode(guia){
     </div>`;
     const cb=document.getElementById('ctrBox');
     if(cb){cb.style.borderColor=color;setTimeout(()=>cb.style.borderColor='',600);}
-  }
-
-  function addToList(guia, zona, estado){
-    S.asigLista.push({guia, zona, estado});
-    S.asigEscaneados.add(guia);
-    const ne=document.getElementById('ctrNA');
-    if(ne) ne.textContent=S.asigLista.length;
-    // Update button count
-    const listBtn=document.querySelector('.btn[onclick*="asignar-lista"]');
-    if(listBtn) listBtn.textContent=`📋 Ver lista (${S.asigLista.length})`;
-    const confBtn=document.querySelector('.btn[onclick*="confirmarAsignacion"]');
-    if(confBtn) confBtn.removeAttribute('disabled');
   }
 
   try{
