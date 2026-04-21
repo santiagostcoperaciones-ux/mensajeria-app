@@ -1197,6 +1197,12 @@ async function pgAuditMens(id){
         const bg    = esSin ? 'rgba(245,158,11,.15)' : 'rgba(59,130,246,.15)';
         const tx    = esSin ? '#fcd34d' : '#93c5fd';
         const badge = esSin ? 'b-am' : 'b-gr';
+        // Para Sin asignar, el rawKey es el display name "Sin asignar — ZONA"
+        // Necesitamos reconstruir la clave original SIN_ASIGNAR_ZONA para el backend
+        const originalKey = esSin
+          ? 'SIN_ASIGNAR_' + rawKey.replace('Sin asignar — ','').trim().replace(/\s+/g,'_').toUpperCase()
+          : rawKey;
+        const selectId = 'reasigSelect_' + originalKey.replace(/[^a-zA-Z0-9]/g,'_');
         h+=`<div class="card" onclick="pgAuditPaquetes('${esc(S.cont)}','${esc(rawKey)}')">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
             <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:${tx};flex-shrink:0">${ini}</div>
@@ -1208,11 +1214,11 @@ async function pgAuditMens(id){
           </div>
           ${esSin ? `
           <div style="border-top:1px solid var(--brd);padding-top:9px;display:flex;gap:7px" onclick="event.stopPropagation()">
-            <select class="inp" id="reasigSelect_${rawKey.replace(/[^a-zA-Z0-9]/g,'_')}" style="flex:1;height:38px;font-size:var(--fss)">
+            <select class="inp" id="${selectId}" style="flex:1;height:38px;font-size:var(--fss)">
               <option value="">Asignar mensajero...</option>
               ${S.mensajeros.map(m=>`<option value="${esc(m['ID_Mensajero'])}">${esc(m['Nombre_Completo'])}</option>`).join('')}
             </select>
-            <button class="btn btn-a btn-s" onclick="event.stopPropagation();reasignarSinAsignar('${esc(S.cont)}','${esc(rawKey)}')">Asignar</button>
+            <button class="btn btn-a btn-s" onclick="event.stopPropagation();reasignarSinAsignar('${esc(S.cont)}','${esc(originalKey)}')">Asignar</button>
           </div>` : ''}
         </div>`;
       });
