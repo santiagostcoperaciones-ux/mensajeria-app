@@ -158,6 +158,36 @@ hr.dv{border:none;border-top:1px solid var(--brd);margin:12px 0}
 <div id="toast"></div>
 
 <script>
+// ── Audio feedback ───────────────────────────────────────────────
+const _ac = new (window.AudioContext||window.webkitAudioContext)();
+function beep(type){
+  try{
+    const o=_ac.createOscillator(), g=_ac.createGain();
+    o.connect(g); g.connect(_ac.destination);
+    if(type==='ok'){
+      o.frequency.value=1200; g.gain.value=0.3;
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.08);
+      o.stop(_ac.currentTime+0.08);
+    } else if(type==='er'){
+      o.frequency.value=300; g.gain.value=0.4;
+      o.type='square';
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.18);
+      o.stop(_ac.currentTime+0.18);
+    } else if(type==='wa'){
+      // doble beep para warning (paquete ya asignado)
+      o.frequency.value=900; g.gain.value=0.25;
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.06);
+      o.stop(_ac.currentTime+0.06);
+      const o2=_ac.createOscillator(), g2=_ac.createGain();
+      o2.connect(g2); g2.connect(_ac.destination);
+      o2.frequency.value=700; g2.gain.value=0.25;
+      o2.start(_ac.currentTime+0.08); g2.gain.setValueAtTime(0.25,_ac.currentTime+0.08);
+      g2.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.16);
+      o2.stop(_ac.currentTime+0.16);
+    }
+  }catch(e){}
+}
+
 const S = {
   op: localStorage.getItem('op') || '',
   cont: null, mens: null,
@@ -523,7 +553,7 @@ async function pgAsignar(){
       </select>
     </div>
     <div class="ig" id="bolsaLabelWrap" style="display:none">
-      <label class="lbl">Etiqueta de bolsa <span style="color:var(--tx3);font-size:var(--fss)">(opcional — para separar bolsas del mismo tipo)</span></label>
+      <label class="lbl">Nombre de la bolsa</label>
       <input class="inp" id="bolsaLabel" placeholder="Ej: Imperial A, Bolsa 1, Mix Norte..." maxlength="30">
     </div>
     <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">
@@ -551,16 +581,12 @@ function iniciarAsignacion(){
   let finalNombre = mensNombre;
   if(mensId === 'SIN_ASIGNAR'){
     const label = (document.getElementById('bolsaLabel')?.value || '').trim();
-    if(label){
-      // Guardar con etiqueta: SIN_ASIGNAR_IMPERIAL_A, SIN_ASIGNAR_BOLSA_1, etc.
-      const key = 'SIN_ASIGNAR_' + label.replace(/[^A-Z0-9]/gi,'_').replace(/_+$/,'').toUpperCase();
-      finalMensId = key;
-      finalNombre = '📦 ' + label;
-      // Guardar flag para que el backend use esta clave fija en lugar de la zona
-      S.asigBolsaFija = key;
-    } else {
-      S.asigBolsaFija = null; // sin etiqueta → comportamiento normal (agrupa por zona)
-    }
+    if(!label){toast('Escribe un nombre para la bolsa','er');return;}
+    // Guardar con etiqueta: SIN_ASIGNAR_IMPERIAL_A, SIN_ASIGNAR_BOLSA_1, etc.
+    const key = 'SIN_ASIGNAR_' + label.replace(/[^A-Z0-9]/gi,'_').replace(/_+$/,'').toUpperCase();
+    finalMensId = key;
+    finalNombre = '📦 ' + label;
+    S.asigBolsaFija = key;
   } else {
     S.asigBolsaFija = null;
   }
@@ -613,7 +639,7 @@ function addToList(guia, zona, estado){
 async function onAsignacionCode(guia){
   // Duplicado en la lista actual
   if(S.asigEscaneados.has(guia)){
-    toast('Ya está en la lista','wa');
+    beep('wa'); toast('Ya está en la lista','wa');
     setTimeout(resumeScan, 700);
     return;
   }
@@ -636,12 +662,14 @@ async function onAsignacionCode(guia){
       // Paquete libre — agregar directamente
       addToList(guia, r.zona||'—', 'ok');
       showResult(guia, r.zona||'✓ LIBRE', 'var(--grn)');
+      beep('ok');
       setTimeout(resumeScan, 350);
 
     } else if(r.caso === 'asignado'){
       // Ya tiene mensajero — preguntar
       stopScan();
       showResult(guia, 'ASIGNADO', 'var(--amb)');
+      beep('wa');
       // Resolver nombre del mensajero actual
       const mensIdActual = r.mensajeroId || r.mensajeroActual || '';
       const mensObjActual = S.mensajeros.find(m => String(m['ID_Mensajero']) === String(mensIdActual));
@@ -666,6 +694,7 @@ async function onAsignacionCode(guia){
       // Sobrante — preguntar si agregar
       stopScan();
       showResult(guia, 'SOBRANTE', 'var(--red)');
+      beep('er');
       S._pendingGuia = guia; S._pendingZona = 'SOBRANTE';
       dialog(
         'Paquete sobrante',
@@ -682,7 +711,7 @@ async function onAsignacionCode(guia){
       );
 
     } else {
-      toast(r.error||'Error consultando paquete','er');
+      beep('er'); toast(r.error||'Error consultando paquete','er');
       setTimeout(resumeScan, 1000);
     }
   }catch(e){toast('Error: '+e.message,'er');setTimeout(resumeScan,1000);}
