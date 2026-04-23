@@ -515,18 +515,27 @@ async function pgAsignar(){
       </select>
     </div>
     <div class="ig"><label class="lbl">Mensajero a asignar</label>
-      <select class="inp" id="sMens">
+      <select class="inp" id="sMens" onchange="toggleBolsaLabel(this.value)">
         <option value="">Seleccionar mensajero...</option>
         <option value="SIN_ASIGNAR">📦 Sin asignar (definir después)</option>
         <option disabled style="color:var(--tx3)">──────────────</option>
         ${mOpts}
       </select>
     </div>
+    <div class="ig" id="bolsaLabelWrap" style="display:none">
+      <label class="lbl">Etiqueta de bolsa <span style="color:var(--tx3);font-size:var(--fss)">(opcional — para separar bolsas del mismo tipo)</span></label>
+      <input class="inp" id="bolsaLabel" placeholder="Ej: Imperial A, Bolsa 1, Mix Norte..." maxlength="30">
+    </div>
     <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h.01M18 14h.01M14 18h.01M18 18h.01"/></svg>
       Iniciar escaneo de asignación
     </button>
   </div>`);
+}
+
+function toggleBolsaLabel(val){
+  const wrap = document.getElementById('bolsaLabelWrap');
+  if(wrap) wrap.style.display = val === 'SIN_ASIGNAR' ? 'block' : 'none';
 }
 
 function iniciarAsignacion(){
@@ -536,9 +545,29 @@ function iniciarAsignacion(){
   const mensNombre = mensEl?.options[mensEl.selectedIndex]?.text;
   if(!cont){toast('Selecciona un contenedor','er');return;}
   if(!mensId){toast('Selecciona un mensajero','er');return;}
+
+  // Si es Sin Asignar con etiqueta personalizada, usarla como clave fija
+  let finalMensId = mensId;
+  let finalNombre = mensNombre;
+  if(mensId === 'SIN_ASIGNAR'){
+    const label = (document.getElementById('bolsaLabel')?.value || '').trim();
+    if(label){
+      // Guardar con etiqueta: SIN_ASIGNAR_IMPERIAL_A, SIN_ASIGNAR_BOLSA_1, etc.
+      const key = 'SIN_ASIGNAR_' + label.replace(/[^A-Z0-9]/gi,'_').replace(/_+$/,'').toUpperCase();
+      finalMensId = key;
+      finalNombre = '📦 ' + label;
+      // Guardar flag para que el backend use esta clave fija en lugar de la zona
+      S.asigBolsaFija = key;
+    } else {
+      S.asigBolsaFija = null; // sin etiqueta → comportamiento normal (agrupa por zona)
+    }
+  } else {
+    S.asigBolsaFija = null;
+  }
+
   S.cont = cont;
-  S.asigMensId = mensId;
-  S.asigMensNombre = mensNombre;
+  S.asigMensId = finalMensId;
+  S.asigMensNombre = finalNombre;
   S.asigLista = [];
   S.asigEscaneados = new Set();
   go('asignar-scan');
@@ -806,7 +835,7 @@ async function confirmarAsignacionFinal(){
   const totalEnLista = S.asigLista.length;
   setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Guardando asignaciones...</span></div>');
   try{
-    const r = await api('srv_asignarPaquetesEscaneados', S.cont, S.asigMensId, S.asigLista, S.op);
+    const r = await api('srv_asignarPaquetesEscaneados', S.cont, S.asigMensId, S.asigLista, S.op, S.asigBolsaFija||null);
     toast(`${r.asignados||totalEnLista} paquetes asignados ✓`,'ok');
     S.asigLista=[]; S.asigEscaneados=new Set();
     await pgAsignar();
