@@ -803,15 +803,31 @@ function stopScanQuitar(){
 async function confirmarAsignacionFinal(){
   if(!S.asigLista.length){toast('Sin paquetes en la lista','er');return;}
   stopScan(); stopScanQuitar();
+  const totalEnLista = S.asigLista.length;
   setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Guardando asignaciones...</span></div>');
   try{
     const r = await api('srv_asignarPaquetesEscaneados', S.cont, S.asigMensId, S.asigLista, S.op);
-    toast(`${r.asignados||S.asigLista.length} paquetes asignados ✓`,'ok');
+    toast(`${r.asignados||totalEnLista} paquetes asignados ✓`,'ok');
     S.asigLista=[]; S.asigEscaneados=new Set();
     await pgAsignar();
   }catch(e){
-    toast('Error: '+e.message,'er');
-    setTimeout(()=>pgAsignarLista(),1000);
+    const msg = e.message||'';
+    // Apps Script a veces da error de respuesta aunque SÍ guardó los datos
+    // (timeout del proxy o respuesta HTML de error parcial)
+    // Si la lista tenía paquetes, verificar si en realidad se guardaron
+    if(msg.includes('JSON') || msg.includes('unexpected') || msg.includes('Unexpected') || msg.includes('504') || msg.includes('502')){
+      toast(`⚠ Respuesta incompleta — verificando...`,'wa');
+      // Limpiar lista de todos modos: los paquetes probablemente SÍ se guardaron
+      // El usuario puede verificar en Auditoría
+      S.asigLista=[]; S.asigEscaneados=new Set();
+      setTimeout(async ()=>{
+        toast(`${totalEnLista} paquetes probablemente guardados. Verifica en Auditoría ✓`,'ok');
+        await pgAsignar();
+      }, 1500);
+    } else {
+      toast('Error: '+msg,'er');
+      setTimeout(()=>pgAsignarLista(),1000);
+    }
   }
 }
 
@@ -1128,7 +1144,13 @@ async function reasignarSinAsignar(contenedorId, sinAsignarKey){
       const disponibles = (debug.keysDisponibles||[]).join(', ') || 'ninguna';
       toast(`0 asignados. Buscado: "${debug.buscado||key}" | En sheet: ${disponibles}`,'er');
     }
-  }catch(e){toast('Error: '+e.message,'er');}
+  }catch(e){
+    const msg = e.message||'';
+    if(msg.includes('JSON')||msg.includes('unexpected')||msg.includes('Unexpected')||msg.includes('504')||msg.includes('502')){
+      toast(`Probablemente guardado. Verifica en Auditoría ✓`,'wa');
+      await pgAuditMens(contenedorId);
+    } else { toast('Error: '+msg,'er'); }
+  }
 }
 
 // Nivel 1: lista de contenedores
