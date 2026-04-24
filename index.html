@@ -159,34 +159,41 @@ hr.dv{border:none;border-top:1px solid var(--brd);margin:12px 0}
 
 <script>
 // ── Audio feedback ───────────────────────────────────────────────
-const _ac = new (window.AudioContext||window.webkitAudioContext)();
+let _ac = null;
+function getAC(){
+  if(!_ac) _ac = new (window.AudioContext||window.webkitAudioContext)();
+  if(_ac.state === 'suspended') _ac.resume();
+  return _ac;
+}
 function beep(type){
   try{
-    const o=_ac.createOscillator(), g=_ac.createGain();
-    o.connect(g); g.connect(_ac.destination);
+    const ac = getAC();
+    const o=ac.createOscillator(), g=ac.createGain();
+    o.connect(g); g.connect(ac.destination);
     if(type==='ok'){
       o.frequency.value=1200; g.gain.value=0.3;
-      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.08);
-      o.stop(_ac.currentTime+0.08);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.08);
+      o.stop(ac.currentTime+0.08);
     } else if(type==='er'){
-      o.frequency.value=300; g.gain.value=0.4;
-      o.type='square';
-      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.18);
-      o.stop(_ac.currentTime+0.18);
+      o.type='square'; o.frequency.value=300; g.gain.value=0.4;
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.18);
+      o.stop(ac.currentTime+0.18);
     } else if(type==='wa'){
-      // doble beep para warning (paquete ya asignado)
       o.frequency.value=900; g.gain.value=0.25;
-      o.start(); g.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.06);
-      o.stop(_ac.currentTime+0.06);
-      const o2=_ac.createOscillator(), g2=_ac.createGain();
-      o2.connect(g2); g2.connect(_ac.destination);
+      o.start(); g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.06);
+      o.stop(ac.currentTime+0.06);
+      const o2=ac.createOscillator(), g2=ac.createGain();
+      o2.connect(g2); g2.connect(ac.destination);
       o2.frequency.value=700; g2.gain.value=0.25;
-      o2.start(_ac.currentTime+0.08); g2.gain.setValueAtTime(0.25,_ac.currentTime+0.08);
-      g2.gain.exponentialRampToValueAtTime(0.001,_ac.currentTime+0.16);
-      o2.stop(_ac.currentTime+0.16);
+      o2.start(ac.currentTime+0.09); g2.gain.setValueAtTime(0.25,ac.currentTime+0.09);
+      g2.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.17);
+      o2.stop(ac.currentTime+0.17);
     }
   }catch(e){}
 }
+// Desbloquear audio en el primer toque del usuario
+document.addEventListener('touchstart', ()=>{ try{ getAC(); }catch(e){} }, {once:true});
+document.addEventListener('click',      ()=>{ try{ getAC(); }catch(e){} }, {once:true});
 
 const S = {
   op: localStorage.getItem('op') || '',
@@ -1015,7 +1022,11 @@ async function doSearch(){
         <div style="word-break:break-all">Dirección: <span style="color:var(--tx)">${esc(p['Direccion_Original']||'—')}</span></div>
       </div>`;
     if(['Asignado','En_Ruta'].includes(est)){
-      h+=`<hr class="dv"><button class="btn btn-d btn-s" onclick="confDesasignar('${esc(p['Num_Guia']||guia)}')">Quitar asignación (error)</button>`;
+      h+=`<hr class="dv">
+        <button class="btn btn-a btn-s" style="margin-bottom:7px" onclick="confDevolver('${esc(p['Num_Guia']||guia)}')">
+          ↩ Devolver a bodega (no entregado)
+        </button>
+        <button class="btn btn-d btn-s" onclick="confDesasignar('${esc(p['Num_Guia']||guia)}')">Quitar asignación (error)</button>`;
     }
     h+=`</div>`;
     if(r.historial?.length){
@@ -1039,6 +1050,43 @@ function confDesasignar(guia){
     {l:'Sí, quitar',c:'btn-d',fn:async()=>{closeDlg();await api('srv_desasignarPaquete',guia,S.op);toast('Desasignado','ok');doSearch();}},
     {l:'Cancelar',c:'btn-g',fn:closeDlg}
   ]);
+}
+
+function confDevolver(guia){
+  S._pendingDevGuia = guia;
+  const motivos = ['Destinatario ausente','Dirección errada','Rechazado por cliente','Zona peligrosa','Sin acceso','Otro'];
+  const opts = motivos.map(m=>`<option value="${m}">${m}</option>`).join('');
+  const body = `<div style="margin-bottom:12px;font-size:var(--fsm);color:var(--tx2)">
+    El paquete volverá a bodega para reasignación. Se incrementará el intento.
+  </div>
+  <label class="lbl">Motivo</label>
+  <select class="inp" id="devMotivo" style="margin-bottom:9px">${opts}</select>
+  <input class="inp" id="devMotivoOtro" placeholder="Detalle (opcional)" style="display:none">`;
+  // Custom dialog with form
+  const dlg = document.createElement('div');
+  dlg.className = 'dlg';
+  dlg.innerHTML = `<div class="dlg-b">
+    <div class="dlg-t">Devolver a bodega</div>
+    <div class="dlg-m" style="word-break:break-all;font-family:var(--mo);font-size:var(--fss);color:var(--tx3);margin-bottom:9px">${esc(guia)}</div>
+    ${body}
+    <button class="btn btn-a btn-w" id="devConfirm" style="margin-top:7px">Confirmar devolución</button>
+    <button class="btn btn-g btn-w" id="devCancel" style="margin-top:7px">Cancelar</button>
+  </div>`;
+  document.body.appendChild(dlg);
+  const sel = dlg.querySelector('#devMotivo');
+  const otro = dlg.querySelector('#devMotivoOtro');
+  sel.onchange = ()=>{ otro.style.display = sel.value==='Otro' ? 'block' : 'none'; };
+  dlg.querySelector('#devConfirm').onclick = async ()=>{
+    let motivo = sel.value;
+    if(motivo==='Otro') motivo = (otro.value.trim() || 'Otro');
+    dlg.remove();
+    try{
+      const r = await api('srv_devolverABodega', guia, motivo, S.op);
+      toast(`Devuelto a bodega (intento ${r.intentos}) ✓`,'ok');
+      doSearch();
+    }catch(e){ toast('Error: '+e.message,'er'); }
+  };
+  dlg.querySelector('#devCancel').onclick = ()=> dlg.remove();
 }
 
 // ════════════════════════════════════════════════════════════════
