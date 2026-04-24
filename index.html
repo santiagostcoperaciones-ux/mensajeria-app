@@ -1365,21 +1365,31 @@ async function pgAuditMens(id){
     const resumen = rRes.data||{};
     const porMens = rMens.data||{};
     const total   = rRes.total||0;
+    // Usar totales calculados por el backend (más precisos) — con fallback al cómputo local
+    const porVerificarBackend = rRes.porVerificar;
+    const fueraBackend        = rRes.fueraZona;
 
-    let asig=0, sinAsig=0, disp=0, fuera=0;
+    let asig=0, sinAsig=0, disp=0, fuera=0, porVer=0;
     Object.values(resumen).forEach(z=>{
       asig    += z.asignados  ||0;
       sinAsig += z.sinAsignar ||0;
       disp    += z.disponibles||0;
       fuera   += z.fuera      ||0;
+      porVer  += z.porVerificar||0;
     });
+    // Preferir el total del backend si viene definido
+    if(typeof porVerificarBackend === 'number') porVer = porVerificarBackend;
+    if(typeof fueraBackend        === 'number') fuera  = fueraBackend;
 
     let h=`
     <button class="btn btn-g btn-s" onclick="pgAudit()" style="margin-bottom:12px">← Contenedores</button>
-    <div class="sg" style="grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">
+    <div class="sg" style="grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px">
       <div class="sc"><div class="sn" style="color:var(--acc)">${total}</div><div class="sl">Total</div></div>
       <div class="sc"><div class="sn" style="color:var(--grn)">${asig}</div><div class="sl">Asignados</div></div>
       <div class="sc"><div class="sn" style="color:var(--amb)">${sinAsig}</div><div class="sl">Sin asig.</div></div>
+    </div>
+    <div class="sg" style="grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px">
+      <div class="sc"><div class="sn" style="color:var(--acc)">${porVer}</div><div class="sl">Por verificar</div></div>
       <div class="sc"><div class="sn" style="color:var(--red)">${fuera}</div><div class="sl">Fuera zona</div></div>
     </div>`;
 
