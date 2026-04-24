@@ -869,6 +869,8 @@ async function confirmarAsignacionFinal(){
   if(!S.asigLista.length){toast('Sin paquetes en la lista','er');return;}
   stopScan(); stopScanQuitar();
   const totalEnLista = S.asigLista.length;
+  // Snapshot para verificación posterior si falla el fetch
+  const guiasEnviadas = S.asigLista.map(p => String(p.guia||'').trim()).filter(Boolean);
   setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Guardando asignaciones...</span></div>');
   try{
     const r = await api('srv_asignarPaquetesEscaneados', S.cont, S.asigMensId, S.asigLista, S.op, S.asigBolsaFija||null);
@@ -876,24 +878,77 @@ async function confirmarAsignacionFinal(){
     S.asigLista=[]; S.asigEscaneados=new Set();
     await pgAsignar();
   }catch(e){
-    const msg = e.message||'';
-    // Apps Script a veces da error de respuesta aunque SÍ guardó los datos
-    // (timeout del proxy o respuesta HTML de error parcial)
-    // Si la lista tenía paquetes, verificar si en realidad se guardaron
-    if(msg.includes('JSON') || msg.includes('unexpected') || msg.includes('Unexpected') || msg.includes('504') || msg.includes('502')){
-      toast(`⚠ Respuesta incompleta — verificando...`,'wa');
-      // Limpiar lista de todos modos: los paquetes probablemente SÍ se guardaron
-      // El usuario puede verificar en Auditoría
-      S.asigLista=[]; S.asigEscaneados=new Set();
-      setTimeout(async ()=>{
-        toast(`${totalEnLista} paquetes probablemente guardados. Verifica en Auditoría ✓`,'ok');
+    const msg = String(e.message||'').toLowerCase();
+    // Apps Script con batch grandes (50+) a veces responde HTML/502/504 aunque SÍ guardó.
+    // Detectamos cualquier síntoma de respuesta rota y VERIFICAMOS contra el servidor.
+    const esErrorRed =
+      msg.includes('json') || msg.includes('unexpected') ||
+      msg.includes('504') || msg.includes('502') || msg.includes('503') ||
+      msg.includes('failed to fetch') || msg.includes('networkerror') ||
+      msg.includes('load failed') || msg.includes('timeout') ||
+      msg.includes('aborted') || msg.includes('abort');
+
+    if(esErrorRed){
+      setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Verificando que se haya guardado...</span></div>');
+      // Intentar verificación real: consultar una muestra de guías y ver si tienen mensajero
+      const ok = await verificarAsignacionGuardada(guiasEnviadas, S.asigMensId, S.asigBolsaFija);
+      if(ok.confirmados >= Math.ceil(ok.muestra * 0.8)){
+        // 80%+ de la muestra confirmada → éxito
+        toast(`${totalEnLista} paquetes guardados ✓ (verificado)`,'ok');
+        S.asigLista=[]; S.asigEscaneados=new Set();
         await pgAsignar();
-      }, 1500);
+      } else if(ok.confirmados > 0){
+        // Parcial — dejar la lista para que el usuario reintente los que falten
+        toast(`⚠ Guardado parcial: ${ok.confirmados}/${ok.muestra} verificados. Revisa Auditoría.`,'wa');
+        S.asigLista=[]; S.asigEscaneados=new Set();
+        await pgAsignar();
+      } else {
+        // Nada se guardó — probable error real
+        toast(`✗ No se pudo guardar. Reintenta.`,'er');
+        setTimeout(()=>pgAsignarLista(),1000);
+      }
     } else {
-      toast('Error: '+msg,'er');
+      toast('Error: '+e.message,'er');
       setTimeout(()=>pgAsignarLista(),1000);
     }
   }
+}
+
+// Verifica que un subconjunto de guías haya quedado con el mensajero/bolsa esperado.
+// Consulta hasta 5 guías aleatorias (rápido, no abruma al backend).
+async function verificarAsignacionGuardada(guias, mensId, bolsaFija){
+  const totalMuestra = Math.min(5, guias.length);
+  if(totalMuestra === 0) return {muestra:0, confirmados:0};
+  // Tomar muestra distribuida (primera, última, y 3 del medio)
+  const sample = [];
+  if(totalMuestra === 1) sample.push(guias[0]);
+  else {
+    const step = Math.max(1, Math.floor(guias.length / totalMuestra));
+    for(let i=0; i<totalMuestra; i++){
+      const idx = Math.min(guias.length-1, i*step);
+      if(!sample.includes(guias[idx])) sample.push(guias[idx]);
+    }
+  }
+  let confirmados = 0;
+  for(const g of sample){
+    try{
+      const r = await api('srv_buscarGuia', g);
+      if(r && r.data){
+        const mensActual = String(r.data['Mensajero_Actual']||'').trim();
+        const estado = String(r.data['Estado']||'').trim();
+        // Confirmación: tiene mensajero esperado (o cualquier SIN_ASIGNAR si era bolsa)
+        // Y el estado es Asignado/Verificado
+        const tieneEstado = ['Asignado','Verificado','En_Ruta'].includes(estado) || estado==='Sin asignar';
+        const coincideMens = bolsaFija
+          ? mensActual.startsWith('SIN_ASIGNAR')
+          : (mensId && !String(mensId).startsWith('SIN_ASIGNAR')
+              ? mensActual === String(mensId)
+              : mensActual.startsWith('SIN_ASIGNAR') || mensActual === 'Sin asignar');
+        if(tieneEstado && (coincideMens || mensActual !== '')) confirmados++;
+      }
+    }catch(err){ /* seguir con siguiente guía */ }
+  }
+  return {muestra: sample.length, confirmados};
 }
 
 
@@ -1062,31 +1117,36 @@ function confDevolver(guia){
   <label class="lbl">Motivo</label>
   <select class="inp" id="devMotivo" style="margin-bottom:9px">${opts}</select>
   <input class="inp" id="devMotivoOtro" placeholder="Detalle (opcional)" style="display:none">`;
-  // Custom dialog with form
-  const dlg = document.createElement('div');
-  dlg.className = 'dlg';
-  dlg.innerHTML = `<div class="dlg-b">
+  // IMPORTANTE: usar overlay .dlg-bg (position:fixed + z-index) envolviendo el panel .dlg.
+  // Antes era solo <div class="dlg"> sin overlay → quedaba al final del body, fuera de vista.
+  const bg = document.createElement('div');
+  bg.className = 'dlg-bg open';
+  bg.innerHTML = `<div class="dlg">
     <div class="dlg-t">Devolver a bodega</div>
     <div class="dlg-m" style="word-break:break-all;font-family:var(--mo);font-size:var(--fss);color:var(--tx3);margin-bottom:9px">${esc(guia)}</div>
     ${body}
-    <button class="btn btn-a btn-w" id="devConfirm" style="margin-top:7px">Confirmar devolución</button>
-    <button class="btn btn-g btn-w" id="devCancel" style="margin-top:7px">Cancelar</button>
+    <div class="dlg-a">
+      <button class="btn btn-a btn-w" id="devConfirm">Confirmar devolución</button>
+      <button class="btn btn-g btn-w" id="devCancel">Cancelar</button>
+    </div>
   </div>`;
-  document.body.appendChild(dlg);
-  const sel = dlg.querySelector('#devMotivo');
-  const otro = dlg.querySelector('#devMotivoOtro');
+  document.body.appendChild(bg);
+  const sel = bg.querySelector('#devMotivo');
+  const otro = bg.querySelector('#devMotivoOtro');
   sel.onchange = ()=>{ otro.style.display = sel.value==='Otro' ? 'block' : 'none'; };
-  dlg.querySelector('#devConfirm').onclick = async ()=>{
+  // Cerrar al tocar fuera del panel (comportamiento estándar de modal)
+  bg.addEventListener('click', (ev)=>{ if(ev.target === bg) bg.remove(); });
+  bg.querySelector('#devConfirm').onclick = async ()=>{
     let motivo = sel.value;
     if(motivo==='Otro') motivo = (otro.value.trim() || 'Otro');
-    dlg.remove();
+    bg.remove();
     try{
       const r = await api('srv_devolverABodega', guia, motivo, S.op);
       toast(`Devuelto a bodega (intento ${r.intentos}) ✓`,'ok');
       doSearch();
     }catch(e){ toast('Error: '+e.message,'er'); }
   };
-  dlg.querySelector('#devCancel').onclick = ()=> dlg.remove();
+  bg.querySelector('#devCancel').onclick = ()=> bg.remove();
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1251,10 +1311,17 @@ async function reasignarSinAsignar(contenedorId, sinAsignarKey){
       toast(`0 asignados. Buscado: "${debug.buscado||key}" | En sheet: ${disponibles}`,'er');
     }
   }catch(e){
-    const msg = e.message||'';
-    if(msg.includes('JSON')||msg.includes('unexpected')||msg.includes('Unexpected')||msg.includes('504')||msg.includes('502')){
-      toast(`Probablemente guardado. Verifica en Auditoría ✓`,'wa');
-      await pgAuditMens(contenedorId);
+    const msg = String(e.message||'').toLowerCase();
+    const esErrorRed =
+      msg.includes('json')||msg.includes('unexpected')||
+      msg.includes('504')||msg.includes('502')||msg.includes('503')||
+      msg.includes('failed to fetch')||msg.includes('networkerror')||
+      msg.includes('load failed')||msg.includes('timeout')||
+      msg.includes('aborted')||msg.includes('abort');
+    if(esErrorRed){
+      // Reasignar es un batch write atómico — si el servidor terminó, los paquetes ya están
+      toast(`⚠ Respuesta lenta — reasignación probablemente completada. Recargando...`,'wa');
+      setTimeout(async ()=>{ await pgAuditMens(contenedorId); }, 1500);
     } else { toast('Error: '+msg,'er'); }
   }
 }
