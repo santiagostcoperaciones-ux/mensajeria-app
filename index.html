@@ -2,10 +2,19 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0f172a">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0a235a">
 <meta name="mobile-web-app-capable" content="yes">
-<title>Mensajería</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="STC Express">
+<meta name="application-name" content="STC Express">
+<meta name="description" content="Sistema de mensajería STC Express — escaneo, asignación y zonificación de paquetes.">
+<title>STC Express</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -1486,6 +1495,28 @@ async function pgAuditPaquetes(contenedorId, mensajeroId){
 
 
 go('home',false);
+
+// === REGISTRO DEL SERVICE WORKER ===
+// Habilita instalación PWA y funcionamiento offline.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(reg => {
+        console.log('[SW] Registrado, scope:', reg.scope);
+        // Detectar actualización del SW
+        reg.addEventListener('updatefound', () => {
+          const sw = reg.installing;
+          if (sw) sw.addEventListener('statechange', () => {
+            if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+              // Hay versión nueva esperando — la activamos en la próxima carga
+              console.log('[SW] Nueva versión disponible — recarga para aplicar.');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[SW] Falló el registro:', err));
+  });
+}
 
 </script>
 </body>
