@@ -950,8 +950,13 @@ function initScanQuitar(){
                   return;
                 }
               }
-            }).catch(()=>{});
-            S._bsLoop=setTimeout(loop,200);
+              // Siguiente intento sincronizado con el frame del video (más fluido)
+              if('requestVideoFrameCallback' in vid) vid.requestVideoFrameCallback(loop);
+              else S._bsLoop=setTimeout(loop,100);
+            }).catch(()=>{
+              if('requestVideoFrameCallback' in vid) vid.requestVideoFrameCallback(loop);
+              else S._bsLoop=setTimeout(loop,100);
+            });
           }
           loop();
         });
@@ -1131,8 +1136,12 @@ function initBuscarScan(){
                   return;
                 }
               }
-            }).catch(()=>{});
-            S._bsLoop = setTimeout(loop, 200);
+              if('requestVideoFrameCallback' in vid) vid.requestVideoFrameCallback(loop);
+              else S._bsLoop = setTimeout(loop, 100);
+            }).catch(()=>{
+              if('requestVideoFrameCallback' in vid) vid.requestVideoFrameCallback(loop);
+              else S._bsLoop = setTimeout(loop, 100);
+            });
           }
           loop();
         });
@@ -1258,8 +1267,10 @@ async function initScan(callback){
   const vid=document.getElementById('svid');
   if(!vid){setSt('Error: elemento de video no encontrado');return;}
   try{
+    // Resolución 640x480: BarcodeDetector procesa 3x más rápido que en 1280x720
+    // y la precisión sigue siendo excelente para códigos de barras estándar y QR.
     const stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}
+      video:{facingMode:{ideal:'environment'},width:{ideal:640},height:{ideal:480}}
     });
     vid.srcObject=stream; S._stream=stream;
     await new Promise(r=>{vid.onloadedmetadata=r;setTimeout(r,3000);});
@@ -1304,7 +1315,15 @@ async function scanLoop(){
       }
     }
   }catch(e){}
-  S._st=setTimeout(scanLoop,200);
+  // requestVideoFrameCallback: dispara el siguiente intento INMEDIATAMENTE cuando
+  // el video tiene un nuevo frame, en vez de esperar un timer fijo.
+  // Fallback a setTimeout 100ms (antes era 200ms) para navegadores sin soporte.
+  const vid=document.getElementById('svid');
+  if(vid && 'requestVideoFrameCallback' in vid){
+    vid.requestVideoFrameCallback(scanLoop);
+  } else {
+    S._st=setTimeout(scanLoop,100);
+  }
 }
 
 function onCode(guia){
