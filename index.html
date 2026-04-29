@@ -205,36 +205,89 @@ document.addEventListener('touchstart', ()=>{ try{ getAC(); }catch(e){} }, {once
 document.addEventListener('click',      ()=>{ try{ getAC(); }catch(e){} }, {once:true});
 
 const S = {
-  op: localStorage.getItem('op') || '',
+  // === Auth ===
+  token:    localStorage.getItem('stc_token')   || '',
+  usuario:  localStorage.getItem('stc_usuario') || '',
+  op:       localStorage.getItem('stc_nombre')  || '',  // nombre completo, usado como "operador" en historial
+  rol:      localStorage.getItem('stc_rol')     || '',
+  expira:   localStorage.getItem('stc_expira')  || '',
+  // === Datos ===
   cont: null, mens: null,
   contenedores:[], mensajeros:[], plan:[],
   // Verificación
   scanN:0, scanning:false, _stream:null, _bd:null, _st:null,
-  escaneadosVerif: new Set(), // guías ya verificadas en esta sesión
+  escaneadosVerif: new Set(),
   // Asignación
   asigMensId: null, asigMensNombre: null,
-  asigLista: [], // [{guia, zona, estado:'ok'|'reasignar'|'sobrante'}]
-  asigEscaneados: new Set(), // guías ya en la lista actual
-  // Scanner secundario (búsqueda/eliminación)
+  asigLista: [],
+  asigEscaneados: new Set(),
+  // Scanner secundario
   _bsStream:null, _bsBD:null, _bsLoop:null,
   stack: [],
 };
 
 const API_URL = 'https://mensajeria-proxy.santiagostcoperaciones.workers.dev';
 
+// Acciones que NO requieren token (deben coincidir con ACCIONES_PUBLICAS del backend)
+const ACCIONES_PUBLICAS = ['srv_login', 'srv_validarToken'];
+
 async function api(fn, ...args){
   if(!API_URL || API_URL.includes('REEMPLAZAR')){
     throw new Error('Configura API_URL con la URL de tu Cloudflare Worker.');
   }
-  const params = new URLSearchParams({ action: fn, args: JSON.stringify(args) });
-  const res = await fetch(`${API_URL}?${params}`, {
-    method: 'GET',
-    cache: 'no-store',
-  });
+  // Las acciones protegidas reciben el token como PRIMER argumento
+  const finalArgs = ACCIONES_PUBLICAS.includes(fn)
+    ? args
+    : [S.token, ...args];
+  const params = new URLSearchParams({ action: fn, args: JSON.stringify(finalArgs) });
+  const res = await fetch(`${API_URL}?${params}`, { method: 'GET', cache: 'no-store' });
   if(!res.ok) throw new Error(`Error ${res.status}`);
   const json = await res.json();
-  if(json.ok === false) throw new Error(json.error || 'Error del servidor');
+  if(json.ok === false){
+    // Si es error de auth, limpiar sesión y mandar a login
+    if(json.error === 'auth'){
+      cerrarSesionLocal();
+      go('login', false);
+      throw new Error('Tu sesión expiró. Vuelve a iniciar sesión.');
+    }
+    throw new Error(json.error || 'Error del servidor');
+  }
   return json;
+}
+
+function cerrarSesionLocal(){
+  S.token = ''; S.usuario = ''; S.op = ''; S.rol = ''; S.expira = '';
+  ['stc_token','stc_usuario','stc_nombre','stc_rol','stc_expira'].forEach(k => localStorage.removeItem(k));
+}
+
+function guardarSesionLocal(r){
+  S.token   = r.token;
+  S.usuario = r.usuario;
+  S.op      = r.nombre;
+  S.rol     = r.rol;
+  S.expira  = r.expira;
+  localStorage.setItem('stc_token',   r.token);
+  localStorage.setItem('stc_usuario', r.usuario);
+  localStorage.setItem('stc_nombre',  r.nombre);
+  localStorage.setItem('stc_rol',     r.rol);
+  localStorage.setItem('stc_expira',  r.expira);
+}
+
+// Verifica al iniciar la app si el token sigue vivo
+async function verificarSesionAlInicio(){
+  if(!S.token) return false;
+  // Chequeo local rápido: si ya expiró, no llamar al servidor
+  if(S.expira && new Date(S.expira) < new Date()){
+    cerrarSesionLocal();
+    return false;
+  }
+  try{
+    const r = await api('srv_validarToken', S.token);
+    return r.ok === true;
+  }catch(e){
+    cerrarSesionLocal();
+    return false;
+  }
 }
 
 // ── Router ───────────────────────────────────────────────────────
@@ -264,8 +317,8 @@ function goBack(){
 
 // ── HOME ─────────────────────────────────────────────────────────
 async function pgHome(){
-  setBar('Mensajería', S.op||'');
-  if(!S.op){go('login',false);return;}
+  setBar('STC Express', S.op||'');
+  if(!S.token){go('login',false);return;}
   setP('<div class="ld"><div class="sp"></div></div>');
   try{
     const [cr,mr]=await Promise.all([api('srv_getContenedores'),api('srv_getMensajeros')]);
@@ -294,7 +347,8 @@ async function pgHome(){
     }
     h+=`<div class="st">Acciones</div>
     <button class="btn btn-g btn-w" onclick="showNuevoCont()" style="margin-bottom:7px">+ Nuevo contenedor</button>
-    <button class="btn btn-g btn-w btn-s" onclick="localStorage.removeItem('op');S.op='';go('login',false)">Cambiar usuario</button>`;
+    <button class="btn btn-g btn-w btn-s" onclick="abrirCambiarPassword()" style="margin-bottom:7px">Cambiar contraseña</button>
+    <button class="btn btn-g btn-w btn-s" onclick="doLogout()">Cerrar sesión</button>`;
     setP(h);
   }catch(e){setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`);}
 }
@@ -302,24 +356,61 @@ async function selCont(id){ S.cont=id; await go('asignar'); }
 
 // ── LOGIN ────────────────────────────────────────────────────────
 function pgLogin(){
-  setBar('Identificación','');
-  setP(`<div style="max-width:320px;margin:clamp(16px,6vh,40px) auto">
-    <div style="text-align:center;margin-bottom:22px">
-      <div style="font-size:40px;margin-bottom:8px">📦</div>
-      <div style="font-size:clamp(17px,5vw,20px);font-weight:600">Sistema Mensajería</div>
-      <div style="font-size:var(--fsm);color:var(--tx2);margin-top:5px">Ingresa tu nombre</div>
+  setBar('STC Express','');
+  setP(`<div style="max-width:340px;margin:clamp(16px,6vh,40px) auto">
+    <div style="text-align:center;margin-bottom:24px">
+      <img src="icons/icon-192.png" alt="STC Express" style="width:88px;height:88px;border-radius:18px;margin-bottom:12px">
+      <div style="font-size:clamp(18px,5vw,22px);font-weight:600">STC Express</div>
+      <div style="font-size:var(--fsm);color:var(--tx2);margin-top:4px">Inicia sesión para continuar</div>
     </div>
-    <div class="ig"><label class="lbl">Nombre</label>
-      <input class="inp" id="loginN" placeholder="Ej: Carlos López" onkeydown="if(event.key==='Enter')doLogin()">
+    <div class="ig"><label class="lbl">Usuario</label>
+      <input class="inp" id="loginU" autocomplete="username" autocapitalize="none" spellcheck="false"
+        placeholder="usuario" onkeydown="if(event.key==='Enter')document.getElementById('loginP').focus()">
     </div>
-    <button class="btn btn-p btn-w" onclick="doLogin()">Entrar</button>
+    <div class="ig"><label class="lbl">Contraseña</label>
+      <input class="inp" id="loginP" type="password" autocomplete="current-password"
+        placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="btn btn-p btn-w" id="loginBtn" onclick="doLogin()">Entrar</button>
+    <div id="loginErr" style="color:var(--red);font-size:var(--fsm);margin-top:10px;text-align:center;display:none"></div>
   </div>`);
-  setTimeout(()=>document.getElementById('loginN')?.focus(),200);
+  setTimeout(()=>document.getElementById('loginU')?.focus(),200);
 }
-function doLogin(){
-  const v=document.getElementById('loginN')?.value.trim();
-  if(!v){toast('Ingresa tu nombre','er');return;}
-  S.op=v; localStorage.setItem('op',v); go('home');
+
+async function doLogin(){
+  const u = document.getElementById('loginU')?.value.trim();
+  const p = document.getElementById('loginP')?.value;
+  const err = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  if(!u || !p){
+    if(err){ err.textContent = 'Ingresa usuario y contraseña'; err.style.display='block'; }
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Verificando...';
+  err.style.display = 'none';
+  try{
+    const r = await api('srv_login', u, p);
+    if(r.ok){
+      guardarSesionLocal(r);
+      toast('Bienvenido, ' + r.nombre, 'ok');
+      go('home');
+    }
+  }catch(e){
+    err.textContent = e.message || 'Error al iniciar sesión';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Entrar';
+    document.getElementById('loginP').value = '';
+    document.getElementById('loginP').focus();
+  }
+}
+
+async function doLogout(){
+  try{ await api('srv_logout', S.token); }catch(e){ /* ignorar */ }
+  cerrarSesionLocal();
+  toast('Sesión cerrada', 'ok');
+  go('login', false);
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1494,7 +1585,56 @@ async function pgAuditPaquetes(contenedorId, mensajeroId){
 }
 
 
-go('home',false);
+// === Inicio: validar sesión antes de mostrar la app ===
+function abrirCambiarPassword(){
+  const bg = document.createElement('div');
+  bg.className = 'dlg-bg open';
+  bg.innerHTML = `<div class="dlg">
+    <div class="dlg-t">Cambiar contraseña</div>
+    <div class="ig"><label class="lbl">Contraseña actual</label>
+      <input class="inp" id="cpOld" type="password" autocomplete="current-password"></div>
+    <div class="ig"><label class="lbl">Nueva contraseña (mín. 6)</label>
+      <input class="inp" id="cpNew" type="password" autocomplete="new-password"></div>
+    <div class="ig"><label class="lbl">Confirmar nueva contraseña</label>
+      <input class="inp" id="cpNew2" type="password" autocomplete="new-password"></div>
+    <div id="cpErr" style="color:var(--red);font-size:var(--fsm);margin-bottom:8px;display:none"></div>
+    <div class="dlg-a">
+      <button class="btn btn-p btn-w" id="cpOk">Cambiar</button>
+      <button class="btn btn-g btn-w" id="cpCancel">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click', ev => { if(ev.target === bg) bg.remove(); });
+  bg.querySelector('#cpCancel').onclick = () => bg.remove();
+  bg.querySelector('#cpOk').onclick = async () => {
+    const oldP = bg.querySelector('#cpOld').value;
+    const newP = bg.querySelector('#cpNew').value;
+    const newP2 = bg.querySelector('#cpNew2').value;
+    const err = bg.querySelector('#cpErr');
+    if(!oldP || !newP){ err.textContent = 'Llena todos los campos'; err.style.display='block'; return; }
+    if(newP.length < 6){ err.textContent = 'La nueva contraseña debe tener al menos 6 caracteres'; err.style.display='block'; return; }
+    if(newP !== newP2){ err.textContent = 'Las contraseñas nuevas no coinciden'; err.style.display='block'; return; }
+    try{
+      await api('srv_cambiarPassword', oldP, newP);
+      bg.remove();
+      toast('Contraseña actualizada ✓', 'ok');
+    }catch(e){
+      err.textContent = e.message;
+      err.style.display = 'block';
+    }
+  };
+}
+
+// Arranque: si hay token guardado lo validamos contra el servidor;
+// si no hay o está inválido, mostramos login.
+(async function init(){
+  if(S.token){
+    setP('<div class="ld"><div class="sp"></div><span style="font-size:var(--fsm);color:var(--tx2)">Verificando sesión...</span></div>');
+    const ok = await verificarSesionAlInicio();
+    if(ok){ go('home', false); return; }
+  }
+  go('login', false);
+})();
 
 // === REGISTRO DEL SERVICE WORKER ===
 // Habilita instalación PWA y funcionamiento offline.
