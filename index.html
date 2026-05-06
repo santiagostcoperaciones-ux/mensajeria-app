@@ -1058,8 +1058,18 @@ async function pgAuditCont(){
 // ══════════════════════════════════════════════════════════════════
 // SCANNER (Camera / BarcodeDetector)
 // ══════════════════════════════════════════════════════════════════
+// Control de cooldown: evita re-escanear el mismo código 60 veces/seg
+let _scanLastCode = null;      // última guía leída
+let _scanLastTime = 0;         // timestamp del último scan exitoso
+const SCAN_COOLDOWN_MS = 1500; // espera mínima entre lecturas (ms)
+let _scanLocked = false;       // bloqueo mientras procesa async
+
 async function initScan(callback){
   S.scanCb = callback;
+  _scanLastCode = null;
+  _scanLastTime = 0;
+  _scanLocked = false;
+
   try{
     const vid = document.getElementById('scanVid');
     if(!vid) return;
@@ -1069,33 +1079,68 @@ async function initScan(callback){
     vid.srcObject = S.scanStream;
     await vid.play();
 
-    // Use BarcodeDetector if available
     if('BarcodeDetector' in window){
       const det = new BarcodeDetector({ formats:['code_128','ean_13','ean_8','code_39'] });
+
       const loop = async()=>{
         if(!S.scanStream) return;
-        try{
-          const codes = await det.detect(vid);
-          if(codes.length){
-            const raw = codes[0].rawValue;
-            const g = cleanGuia(raw);
-            if(g && S.scanCb) S.scanCb(g);
-          }
-        }catch(e){}
-        if(S.scanStream) requestAnimationFrame(loop);
+
+        const now = Date.now();
+        // Solo intentar leer si: no está bloqueado Y pasó el cooldown
+        if(!_scanLocked && (now - _scanLastTime) >= SCAN_COOLDOWN_MS){
+          try{
+            const codes = await det.detect(vid);
+            if(codes.length){
+              const raw = codes[0].rawValue;
+              const g = cleanGuia(raw);
+              if(g){
+                // Ignorar si es el mismo código que se acaba de leer
+                if(g !== _scanLastCode || (now - _scanLastTime) >= SCAN_COOLDOWN_MS * 2){
+                  _scanLastCode = g;
+                  _scanLastTime = now;
+                  _scanLocked = true;
+
+                  // Feedback visual: pausar la línea de escaneo
+                  const line = document.querySelector('.scan-line');
+                  if(line){ line.style.background='var(--grn)'; line.style.boxShadow='0 0 8px var(--grn)'; }
+
+                  if(S.scanCb) await S.scanCb(g);
+
+                  // Restaurar visual y desbloquear
+                  setTimeout(()=>{
+                    const l = document.querySelector('.scan-line');
+                    if(l){ l.style.background='var(--red)'; l.style.boxShadow='0 0 8px var(--red)'; }
+                    _scanLocked = false;
+                  }, SCAN_COOLDOWN_MS);
+                }
+              }
+            }
+          }catch(e){}
+        }
+
+        if(S.scanStream) setTimeout(()=>requestAnimationFrame(loop), 100);
       };
+
       requestAnimationFrame(loop);
+    } else {
+      // BarcodeDetector no disponible en este navegador
+      const area = document.getElementById('scanArea');
+      if(area){
+        area.innerHTML += '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:8px;text-align:center;font-size:var(--fss);color:var(--amb)">Escáner automático no disponible — usa el campo de texto</div>';
+      }
     }
   }catch(e){
     console.warn('Camera error:', e);
     const area = document.getElementById('scanArea');
-    if(area) area.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3)">Cámara no disponible. Usa el campo de texto.</div>';
+    if(area) area.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3)">Cámara no disponible.<br>Usa el campo de texto.</div>';
   }
 }
 
 function stopScan(){
   if(S.scanStream){ S.scanStream.getTracks().forEach(t=>t.stop()); S.scanStream=null; }
   S.scanCb = null;
+  _scanLastCode = null;
+  _scanLocked = false;
 }
 
 // ══════════════════════════════════════════════════════════════════
