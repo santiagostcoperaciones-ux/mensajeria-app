@@ -749,16 +749,42 @@ function pgAsignarLista(){
   setP(h);
 }
 
+let _confirmando = false;
+
 async function confirmarAsignacion(){
   if(!S.asigLista.length){ toast('No hay paquetes','er'); return; }
+  if(_confirmando) return;
+  _confirmando = true;
+
+  document.querySelectorAll('button').forEach(b => b.disabled = true);
+
+  const total = S.asigLista.length;
   const esSinAsignar = S.asigMensId === 'SIN_ASIGNAR';
   const nuevoEstado = esSinAsignar ? 'verificado' : 'asignado';
 
+  setP(`
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
+      <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
+      <div style="font-size:var(--fsm);font-weight:600" id="confirmMsg">Guardando...</div>
+      <div style="font-size:var(--fss);color:var(--tx2)" id="confirmSub">0 de ${total} paquetes</div>
+      <div style="width:200px">
+        <div class="progress"><div class="progress-bar" id="confirmBar" style="width:0%"></div></div>
+      </div>
+    </div>
+  `);
+
   let ok = 0, errs = 0;
-  for(const item of S.asigLista){
+
+  for(let i = 0; i < S.asigLista.length; i++){
+    const item = S.asigLista[i];
+    const pct = Math.round(100 * i / total);
+    const barEl = document.getElementById('confirmBar');
+    const subEl = document.getElementById('confirmSub');
+    if(barEl) barEl.style.width = pct + '%';
+    if(subEl) subEl.textContent = `${i} de ${total} paquetes`;
+
     try{
       if(item.estado === 'sobrante'){
-        // Create new paquete
         await sb.from('paquetes').insert({
           num_guia: item.guia,
           contenedor_id: S.cont,
@@ -769,15 +795,12 @@ async function confirmarAsignacion(){
           created_by: S.user.id
         });
       } else {
-        // Update existing
-        const updates = {
+        await sb.from('paquetes').update({
           estado: nuevoEstado,
           mensajero_id: esSinAsignar ? null : S.asigMensId,
           updated_by: S.user.id
-        };
-        await sb.from('paquetes').update(updates).eq('num_guia', item.guia);
+        }).eq('num_guia', item.guia);
       }
-      // Historial
       if(item.paqId){
         await sb.from('historial_paquetes').insert({
           paquete_id: item.paqId,
@@ -791,8 +814,19 @@ async function confirmarAsignacion(){
     }catch(e){ errs++; }
   }
 
-  toast(`${ok} asignados ✓${errs ? `, ${errs} errores` : ''}`, errs ? 'wa' : 'ok');
+  const barEl = document.getElementById('confirmBar');
+  const msgEl = document.getElementById('confirmMsg');
+  const subEl = document.getElementById('confirmSub');
+  if(barEl){ barEl.style.width='100%'; barEl.style.background = errs ? 'var(--amb)' : 'var(--grn)'; }
+  if(msgEl) msgEl.textContent = errs ? `Completado con ${errs} errores` : '¡Listo!';
+  if(subEl) subEl.textContent = `${ok} paquetes guardados${errs ? `, ${errs} errores` : ''}`;
+
+  beep(errs ? 'wa' : 'ok');
+  await new Promise(r => setTimeout(r, 800));
+
+  _confirmando = false;
   S.asigLista = [];
+  toast(`${ok} asignados ✓${errs ? `, ${errs} errores` : ''}`, errs ? 'wa' : 'ok');
   go('asignar');
 }
 
