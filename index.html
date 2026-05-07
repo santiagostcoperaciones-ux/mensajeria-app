@@ -204,7 +204,13 @@ function setP(h){document.getElementById('pg').innerHTML=h;}
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(msg,type='ok'){beep(type);const e=document.getElementById('toast');e.textContent=msg;e.className=type+' show';clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2800);}
 function loader(){return '<div class="ld"><div class="sp"></div></div>';}
-function cleanGuia(raw){const s=String(raw||'').trim().replace(/[^a-zA-Z0-9]/g,'');return s.length>=6?s:null;}
+function cleanGuia(raw){
+  // Extraer solo dígitos (las guías son numéricas)
+  const s = String(raw||'').trim().replace(/[^0-9]/g,'');
+  // Debe tener exactamente 16 dígitos y empezar con "26"
+  if(s.length === 16 && s.startsWith('26')) return s;
+  return null;
+}
 function todayISO(){return new Date().toISOString().slice(0,10);}
 function fmtDate(d){if(!d)return'—';try{return new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return d;}}
 function fmtDateTime(d){if(!d)return'—';try{const dt=new Date(d);return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})+' '+dt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}catch(e){return d;}}
@@ -879,44 +885,59 @@ async function confirmarAsignacion(){
   if(!S.asigLista.length){toast('No hay paquetes','er');return;}
   if(_confirmando)return;
   _confirmando=true;
-  document.querySelectorAll('button').forEach(b=>b.disabled=true);
+
+  // NO deshabilitar botones del nav — solo mostrar pantalla de carga
+  // que reemplaza el contenido y hace imposible tocar los botones de la lista
   const total=S.asigLista.length;
   const esSinAsignar=S.asigMensId==='SIN_ASIGNAR';
   const nuevoEstado=esSinAsignar?'verificado':'asignado';
+
   setP(`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
     <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
     <div style="font-size:var(--fsm);font-weight:600" id="confirmMsg">Guardando...</div>
     <div style="font-size:var(--fss);color:var(--tx2)" id="confirmSub">0 de ${total}</div>
     <div style="width:220px"><div class="progress"><div class="progress-bar" id="confirmBar" style="width:0%"></div></div></div>
   </div>`);
+
   let ok=0,errs=0;
-  for(let i=0;i<S.asigLista.length;i++){
-    const item=S.asigLista[i];
-    const b=document.getElementById('confirmBar'),s=document.getElementById('confirmSub');
-    if(b)b.style.width=Math.round(100*i/total)+'%';
-    if(s)s.textContent=`${i} de ${total}`;
-    try{
-      if(item.estado==='sobrante'){
-        const{data:np}=await sb.from('paquetes').insert({
-          num_guia:item.guia,contenedor_id:null,destinatario:'SOBRANTE',
-          direccion_original:'Sobrante escaneado',estado:nuevoEstado,
-          mensajero_id:esSinAsignar?null:S.asigMensId,created_by:S.user.id
-        }).select().single();
-        if(np)await sb.from('historial_paquetes').insert({paquete_id:np.id,accion:'marcado_sobrante',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
-      }else{
-        await sb.from('paquetes').update({estado:nuevoEstado,mensajero_id:esSinAsignar?null:S.asigMensId,updated_by:S.user.id}).eq('id',item.paqId);
-        await sb.from('historial_paquetes').insert({paquete_id:item.paqId,accion:item.estado==='reasignar'?'reasignado':'asignado',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
-      }
-      ok++;
-    }catch(e){errs++;}
+  try{
+    for(let i=0;i<S.asigLista.length;i++){
+      const item=S.asigLista[i];
+      const b=document.getElementById('confirmBar'),s=document.getElementById('confirmSub');
+      if(b)b.style.width=Math.round(100*i/total)+'%';
+      if(s)s.textContent=`${i} de ${total}`;
+      try{
+        if(item.estado==='sobrante'){
+          const{data:np}=await sb.from('paquetes').insert({
+            num_guia:item.guia,contenedor_id:null,destinatario:'SOBRANTE',
+            direccion_original:'Sobrante escaneado',estado:nuevoEstado,
+            mensajero_id:esSinAsignar?null:S.asigMensId,created_by:S.user.id
+          }).select().single();
+          if(np)await sb.from('historial_paquetes').insert({paquete_id:np.id,accion:'marcado_sobrante',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
+        }else{
+          await sb.from('paquetes').update({estado:nuevoEstado,mensajero_id:esSinAsignar?null:S.asigMensId,updated_by:S.user.id}).eq('id',item.paqId);
+          await sb.from('historial_paquetes').insert({paquete_id:item.paqId,accion:item.estado==='reasignar'?'reasignado':'asignado',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
+        }
+        ok++;
+      }catch(e){errs++;}
+    }
+
+    const b=document.getElementById('confirmBar'),m=document.getElementById('confirmMsg'),s=document.getElementById('confirmSub');
+    if(b){b.style.width='100%';b.style.background=errs?'var(--amb)':'var(--grn)';}
+    if(m)m.textContent=errs?`Completado con ${errs} errores`:'¡Listo!';
+    if(s)s.textContent=`${ok} paquetes guardados`;
+    beep(errs?'wa':'ok');
+    await new Promise(r=>setTimeout(r,800));
+
+  }catch(e){
+    // Error inesperado — mostrar y desbloquear
+    toast('Error inesperado: '+e.message,'er');
+  }finally{
+    // SIEMPRE se ejecuta — garantiza que la app nunca queda bloqueada
+    _confirmando=false;
+    S.asigLista=[];
   }
-  const b=document.getElementById('confirmBar'),m=document.getElementById('confirmMsg'),s=document.getElementById('confirmSub');
-  if(b){b.style.width='100%';b.style.background=errs?'var(--amb)':'var(--grn)';}
-  if(m)m.textContent=errs?`Completado con ${errs} errores`:'¡Listo!';
-  if(s)s.textContent=`${ok} paquetes guardados`;
-  beep(errs?'wa':'ok');
-  await new Promise(r=>setTimeout(r,800));
-  _confirmando=false;S.asigLista=[];
+
   toast(`${ok} asignados ✓${errs?`, ${errs} errores`:''}`,'ok');
   go('asignar');
 }
