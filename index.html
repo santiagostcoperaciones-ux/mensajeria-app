@@ -194,7 +194,12 @@ async function go(page,push=true){
       case 'mens-paquetes': await pgMensPaquetes();break;
       default:              await pgHome();
     }
-  }catch(e){setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`);}
+  }catch(e){
+    console.error('go() error en página',page,e);
+    // Rehabilitar nav siempre
+    document.querySelectorAll('.nav .nb').forEach(b=>b.disabled=false);
+    setP(`<div class="ld"><p style="color:var(--red);text-align:center">${esc(e.message)}<br><br><button class="btn btn-o btn-s" onclick="go('home',false)">← Volver al inicio</button></p></div>`);
+  }
 }
 function goBack(){S.stack.pop();const p=S.stack[S.stack.length-1]||'home';S.stack.pop();go(p);}
 
@@ -786,8 +791,10 @@ async function pgAsignar(){
       ℹ️ Se aceptan paquetes de cualquier contenedor activo
     </div>
   `);
-  document.getElementById('selMens').onchange=function(){
-    document.getElementById('bolsaWrap').style.display=this.value==='SIN_ASIGNAR'?'block':'none';
+  const selEl=document.getElementById('selMens');
+  if(selEl) selEl.onchange=function(){
+    const bw=document.getElementById('bolsaWrap');
+    if(bw)bw.style.display=this.value==='SIN_ASIGNAR'?'block':'none';
   };
 }
 function iniciarAsignacion(){
@@ -930,16 +937,24 @@ async function confirmarAsignacion(){
     await new Promise(r=>setTimeout(r,800));
 
   }catch(e){
-    // Error inesperado — mostrar y desbloquear
     toast('Error inesperado: '+e.message,'er');
   }finally{
     // SIEMPRE se ejecuta — garantiza que la app nunca queda bloqueada
     _confirmando=false;
     S.asigLista=[];
+    // Rehabilitar botones del nav explícitamente por si acaso
+    document.querySelectorAll('.nav .nb').forEach(b=>b.disabled=false);
   }
 
-  toast(`${ok} asignados ✓${errs?`, ${errs} errores`:''}`,'ok');
-  go('asignar');
+  // Navegar siempre, sin importar resultado
+  try{
+    toast(`${ok} asignados ✓${errs?`, ${errs} errores`:''}`,'ok');
+    await go('asignar');
+  }catch(e){
+    // Si go() falla, forzar home como fallback
+    toast('Volviendo al inicio...','wa');
+    await go('home',false);
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
