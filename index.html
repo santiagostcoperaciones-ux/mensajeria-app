@@ -291,28 +291,40 @@ async function pgHome(){
   const diaEnd=S.homeFecha+'T23:59:59';
   const fechaLabel=S.homeFecha===hoy?'hoy':S.homeFecha===ayer?'ayer':fmtDate(S.homeFecha);
 
-  // Pendientes ACUMULADOS: todos los paquetes sin mensajero que no estén entregados/devueltos
-  // De contenedores que aún están abiertos (no cerrados)
-  const[{data:pendAcum},{data:asignadosHoy},{data:entregadosHoy},{data:devueltosHoy}]=await Promise.all([
-    sb.from('paquetes')
-      .select('id',{count:'exact',head:true})
-      .in('estado',['pendiente','verificado'])
-      .is('mensajero_id',null),
+  // Pendientes del DÍA seleccionado: paquetes importados ese día sin mensajero
+  // Rezagados: paquetes de días ANTERIORES sin mensajero (importados antes del día seleccionado)
+  const[{data:asignadosHoy},{data:entregadosHoy},{data:devueltosHoy},{data:pendDia},{data:pendRezagados}]=await Promise.all([
+    // Asignados en el día seleccionado
     sb.from('historial_paquetes')
       .select('paquete_id,mensajero_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo)')
       .eq('accion','asignado')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Entregados en el día seleccionado
     sb.from('historial_paquetes')
       .select('paquete_id',{count:'exact',head:true})
       .eq('accion','entregado')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Devueltos en el día seleccionado
     sb.from('historial_paquetes')
       .select('paquete_id',{count:'exact',head:true})
       .eq('accion','devuelto_bodega')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Pendientes del DÍA: importados ese día, sin mensajero
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null)
+      .gte('created_at',diaStart).lte('created_at',diaEnd),
+    // Rezagados: importados ANTES del día seleccionado, sin mensajero
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null)
+      .lt('created_at',diaStart),
   ]);
 
-  const totalPend=pendAcum?.length??0;
+  const totalPendDia=pendDia?.length??0;
+  const totalRezagados=pendRezagados?.length??0;
   const totalAsig=asignadosHoy?.length??0;
   const totalEntr=entregadosHoy?.length??0;
   const totalDev=devueltosHoy?.length??0;
@@ -337,8 +349,8 @@ async function pgHome(){
 
     <div class="stat-row">
       <div class="stat">
-        <div class="stat-n" style="color:var(--red)">${totalPend}</div>
-        <div class="stat-l">Pendientes<br>acumulados</div>
+        <div class="stat-n" style="color:var(--red)">${totalPendDia}</div>
+        <div class="stat-l">Pendientes<br>${fechaLabel}</div>
       </div>
       <div class="stat">
         <div class="stat-n" style="color:var(--acc)">${totalAsig}</div>
@@ -361,13 +373,24 @@ async function pgHome(){
     <button class="btn btn-o btn-s" style="flex:1" onclick="go('mensajeros')">👥 Mensajeros</button>
   </div>`;
 
-  if(totalPend>0){
-    h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+  // Alerta pendientes del día
+  if(totalPendDia>0){
+    h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
       <div>
-        <div style="font-weight:600;color:var(--red);font-size:var(--fsm)">${totalPend} paquetes pendientes</div>
-        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Sin mensajero asignado</div>
+        <div style="font-weight:600;color:var(--red);font-size:var(--fsm)">${totalPendDia} sin asignar ${fechaLabel}</div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Importados este día, sin mensajero</div>
       </div>
       <button class="btn btn-d btn-s" onclick="go('asignar')">Asignar →</button>
+    </div>`;
+  }
+  // Alerta rezagados (días anteriores)
+  if(totalRezagados>0){
+    h+=`<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:600;color:var(--amb);font-size:var(--fsm)">${totalRezagados} rezagados de días anteriores</div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Paquetes de contenedores previos sin asignar</div>
+      </div>
+      <button class="btn btn-s" style="background:var(--amb);color:#000;font-weight:600" onclick="go('asignar')">Asignar →</button>
     </div>`;
   }
 
