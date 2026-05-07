@@ -124,8 +124,8 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
     <button class="nb" id="nb2" onclick="go('asignar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Asignar
     </button>
-    <button class="nb" id="nb3" onclick="go('mensajeros')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>Mensajeros
+    <button class="nb" id="nb3" onclick="go('buscar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Buscar
     </button>
   </nav>
 </div>
@@ -155,7 +155,7 @@ const S={
   _mensId:null,_mensNombre:null,
   _auditMensId:null,_auditMensNombre:null,
 };
-const nm={home:0,contenedores:1,asignar:2,mensajeros:3};
+const nm={home:0,contenedores:1,asignar:2,buscar:3};
 const stColor={pendiente:'b-am',verificado:'b-bl',asignado:'b-pu',en_ruta:'b-gr',entregado:'b-gr',devuelto:'b-rd',sobrante:'b-rd',fuera_zona:'b-gy'};
 
 // ── Audio ──
@@ -274,7 +274,8 @@ async function pgHome(){
   setP(loader());
 
   const hoy=todayISO();
-  const ayer=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const _ayer=new Date();_ayer.setDate(_ayer.getDate()-1);
+  const ayer=_ayer.getFullYear()+'-'+String(_ayer.getMonth()+1).padStart(2,'0')+'-'+String(_ayer.getDate()).padStart(2,'0');
   const diaStart=S.homeFecha+'T00:00:00';
   const diaEnd=S.homeFecha+'T23:59:59';
   const fechaLabel=S.homeFecha===hoy?'hoy':S.homeFecha===ayer?'ayer':fmtDate(S.homeFecha);
@@ -342,6 +343,12 @@ async function pgHome(){
       </div>
     </div>
   `;
+
+  // Accesos rápidos siempre visibles
+  h += `<div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="btn btn-o btn-s" style="flex:1" onclick="go('buscar')">🔍 Buscar guía</button>
+    <button class="btn btn-o btn-s" style="flex:1" onclick="go('mensajeros')">👥 Mensajeros</button>
+  </div>`;
 
   if(totalPend>0){
     h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
@@ -560,20 +567,19 @@ async function pgContDetalle(){
   };
 
   // Renderizar con tabs
-  S._contTab=S._contTab||'zonas';
-  const renderTab=(tab)=>{
-    S._contTab=tab;
-    document.getElementById('tabZonas').classList.toggle('on',tab==='zonas');
-    document.getElementById('tabMens').classList.toggle('on',tab==='mens');
-    document.getElementById('tabContent').innerHTML=tab==='zonas'?zonasHTML():mensHTML();
-  };
+  S._contTab = S._contTab || 'zonas';
+  // Guardar funciones globalmente para que los botones puedan llamarlas
+  window._cdZonasHTML = zonasHTML;
+  window._cdMensHTML  = mensHTML;
 
-  setP(statsHTML+`
+  setP(statsHTML + `
     <div class="seg" style="margin-bottom:10px">
-      <button class="seg-btn ${S._contTab==='zonas'?'on':''}" id="tabZonas" onclick="S._contTab='zonas';document.getElementById('tabZonas').classList.add('on');document.getElementById('tabMens').classList.remove('on');document.getElementById('tabContent').innerHTML=''+(${JSON.stringify(zonasHTML())})">Por zona</button>
-      <button class="seg-btn ${S._contTab==='mens'?'on':''}" id="tabMens" onclick="S._contTab='mens';document.getElementById('tabMens').classList.add('on');document.getElementById('tabZonas').classList.remove('on');document.getElementById('tabContent').innerHTML=''+(${JSON.stringify(mensHTML())})">Por mensajero</button>
+      <button class="seg-btn ${S._contTab==='zonas'?'on':''}" id="tabZonas"
+        onclick="S._contTab='zonas';document.getElementById('tabZonas').classList.add('on');document.getElementById('tabMens').classList.remove('on');document.getElementById('tabContent').innerHTML=window._cdZonasHTML()">Por zona</button>
+      <button class="seg-btn ${S._contTab==='mens'?'on':''}" id="tabMens"
+        onclick="S._contTab='mens';document.getElementById('tabMens').classList.add('on');document.getElementById('tabZonas').classList.remove('on');document.getElementById('tabContent').innerHTML=window._cdMensHTML()">Por mensajero</button>
     </div>
-    <div id="tabContent">${S._contTab==='zonas'?zonasHTML():mensHTML()}</div>
+    <div id="tabContent">${S._contTab==='zonas' ? zonasHTML() : mensHTML()}</div>
   `);
 }
 
@@ -949,8 +955,9 @@ async function pgMensPaquetes(){
   setBar(mensNombre,'');
 
   const hoy=todayISO();
-  const ayer=new Date(Date.now()-86400000).toISOString().slice(0,10);
-  const semIni=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
+  const _ayer=new Date();_ayer.setDate(_ayer.getDate()-1);
+  const ayer=_ayer.getFullYear()+'-'+String(_ayer.getMonth()+1).padStart(2,'0')+'-'+String(_ayer.getDate()).padStart(2,'0');
+  
   const diaStart=S._mensFecha+'T00:00:00';
   const diaEnd=S._mensFecha+'T23:59:59';
   const fechaLabel=S._mensFecha===hoy?'Hoy':S._mensFecha===ayer?'Ayer':fmtDate(S._mensFecha);
