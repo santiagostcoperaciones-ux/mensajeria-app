@@ -26,32 +26,22 @@
 html{height:100%;touch-action:manipulation}
 body{background:var(--bg);color:var(--tx);font-family:var(--fn);font-size:var(--fs);height:100%;display:flex;flex-direction:column;overflow:hidden}
 #app{display:flex;flex-direction:column;height:100dvh}
-
-/* ── Top bar ── */
 .bar{background:var(--bg2);border-bottom:1px solid var(--brd);padding:0 14px;display:flex;align-items:center;gap:10px;height:var(--h);flex-shrink:0}
 .bar-back{width:34px;height:34px;border-radius:8px;border:1px solid var(--brd2);background:none;color:var(--tx);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
 .bar-back.vis{display:flex}
 .bar-title{font-size:clamp(14px,4vw,16px);font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar-sub{font-size:var(--fss);color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:38vw}
-
-/* ── Page container ── */
+.bar-sub{font-size:var(--fss);color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
 .pg{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
-
-/* ── Bottom nav ── */
 .nav{background:var(--bg2);border-top:1px solid var(--brd);display:flex;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
 .nb{flex:1;padding:9px 2px;border:none;background:none;color:var(--tx3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:var(--fss);font-family:var(--fn);min-height:var(--h)}
 .nb.on{color:var(--acc)}
 .nb svg{width:22px;height:22px}
-
-/* ── Cards ── */
 .card{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px;margin-bottom:9px;cursor:pointer;transition:background .15s}
-.card:active{background:var(--bg3);border-color:var(--brd2)}
+.card:active{background:var(--bg3)}
 .card-row{display:flex;align-items:center;gap:12px}
 .ci{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
 .ct{font-weight:500;font-size:var(--fsm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .cs{font-size:var(--fss);color:var(--tx2);margin-top:2px}
-
-/* ── Badges ── */
 .b{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:var(--fss);font-weight:500;font-family:var(--mo);white-space:nowrap}
 .b-bl{background:rgba(59,130,246,.15);color:#93c5fd}
 .b-gr{background:rgba(16,185,129,.15);color:#6ee7b7}
@@ -59,8 +49,6 @@ body{background:var(--bg);color:var(--tx);font-family:var(--fn);font-size:var(--
 .b-rd{background:rgba(239,68,68,.15);color:#fca5a5}
 .b-pu{background:rgba(139,92,246,.15);color:#c4b5fd}
 .b-gy{background:rgba(100,116,139,.15);color:var(--tx2)}
-
-/* ── Buttons ── */
 .btn{font-family:var(--fn);font-size:var(--fsm);font-weight:600;border:none;border-radius:var(--r2);padding:0 18px;height:42px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;transition:opacity .15s,transform .1s}
 .btn:active{transform:scale(.97)}
 .btn-p{background:var(--acc);color:#fff}
@@ -70,14 +58,10 @@ body{background:var(--bg);color:var(--tx);font-family:var(--fn);font-size:var(--
 .btn-w{width:100%}
 .btn-s{height:36px;font-size:var(--fss);padding:0 12px}
 .btn:disabled{opacity:.4;pointer-events:none}
-
-/* ── Inputs ── */
 .inp{font-family:var(--fn);font-size:var(--fsm);background:var(--bg);border:1px solid var(--brd2);color:var(--tx);border-radius:var(--r2);padding:0 14px;height:42px;width:100%;outline:none;transition:border .2s}
 .inp:focus{border-color:var(--acc)}
 .sel{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center/10px;padding-right:32px}
 label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font-weight:500}
-
-/* ── Dialog ── */
 .dlg-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
 .dlg-bg.open{display:flex}
 .dlg{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:20px;max-width:380px;width:100%;max-height:80vh;overflow-y:auto}
@@ -85,39 +69,37 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
 .dlg-m{font-size:var(--fsm);color:var(--tx2);margin-bottom:14px}
 .dlg-g{font-family:var(--mo);font-size:var(--fss);color:var(--tx3);margin-bottom:14px;word-break:break-all}
 .dlg-a{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-
-/* ── Toast ── */
 #toast{position:fixed;bottom:calc(var(--h) + env(safe-area-inset-bottom) + 14px);left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r2);padding:10px 18px;font-size:var(--fsm);font-weight:500;z-index:200;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
 #toast.ok{border-color:var(--grn);color:var(--grn)}
 #toast.er{border-color:var(--red);color:var(--red)}
 #toast.wa{border-color:var(--amb);color:var(--amb)}
 #toast.show{opacity:1}
-
-/* ── Loader / misc ── */
 .ld{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;gap:12px}
 .sp{width:28px;height:28px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{text-align:center;color:var(--tx3);padding:30px 10px;font-size:var(--fsm)}
 .stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.stat{flex:1;min-width:80px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:10px;text-align:center}
+.stat{flex:1;min-width:72px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:10px;text-align:center}
 .stat-n{font-size:clamp(18px,5vw,24px);font-weight:700;font-family:var(--mo)}
 .stat-l{font-size:var(--fss);color:var(--tx2);margin-top:2px}
-.zona-tag{display:inline-block;padding:2px 8px;border-radius:6px;font-size:var(--fss);font-family:var(--mo);font-weight:500;margin:2px}
 .progress{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:8px 0}
 .progress-bar{height:100%;background:var(--acc);border-radius:3px;transition:width .3s}
-.scan-area{position:relative;border-radius:var(--r);overflow:hidden;background:#000;aspect-ratio:4/3;max-height:45vh}
+.scan-area{position:relative;border-radius:var(--r);overflow:hidden;background:#000;aspect-ratio:4/3;max-height:42vh}
 .scan-area video{width:100%;height:100%;object-fit:cover}
-.scan-line{position:absolute;top:50%;left:10%;right:10%;height:2px;background:var(--red);box-shadow:0 0 8px var(--red);animation:scanmove 2s ease-in-out infinite}
+.scan-line{position:absolute;top:50%;left:10%;right:10%;height:2px;background:var(--red);box-shadow:0 0 8px var(--red);animation:scanmove 2s ease-in-out infinite;transition:background .2s,box-shadow .2s}
 @keyframes scanmove{0%,100%{top:30%}50%{top:70%}}
-.scan-result{padding:8px 12px;border-radius:var(--r2);margin-bottom:6px;font-family:var(--mo);font-size:var(--fss);display:flex;align-items:center;gap:8px;animation:fadeIn .2s}
-@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-.file-drop{border:2px dashed var(--brd2);border-radius:var(--r);padding:30px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
+.scan-result{padding:7px 12px;border-radius:var(--r2);margin-bottom:5px;font-family:var(--mo);font-size:var(--fss);display:flex;align-items:center;gap:8px;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.file-drop{border:2px dashed var(--brd2);border-radius:var(--r);padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
 .file-drop:hover,.file-drop.drag{border-color:var(--acc);background:rgba(59,130,246,.05)}
-.file-drop-icon{font-size:36px;margin-bottom:8px}
 .tbl{width:100%;border-collapse:collapse;font-size:var(--fss)}
 .tbl th{text-align:left;padding:8px;color:var(--tx2);border-bottom:1px solid var(--brd);font-weight:500;white-space:nowrap}
-.tbl td{padding:8px;border-bottom:1px solid var(--brd);vertical-align:top}
+.tbl td{padding:8px;border-bottom:1px solid var(--brd);vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
+.seg{display:flex;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:3px;gap:3px;margin-bottom:14px}
+.seg-btn{flex:1;padding:6px;border:none;background:none;color:var(--tx2);border-radius:8px;cursor:pointer;font-size:var(--fss);font-family:var(--fn);font-weight:500;transition:background .15s,color .15s}
+.seg-btn.on{background:var(--bg2);color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.section-title{font-size:var(--fsm);font-weight:600;color:var(--tx2);margin:16px 0 8px;display:flex;align-items:center;gap:6px}
 </style>
 </head>
 <body>
@@ -128,24 +110,24 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
       <div class="bar-title" id="pgT">STC Express</div>
       <div class="bar-sub" id="pgS"></div>
     </div>
+    <div id="barRight"></div>
   </header>
   <main class="pg" id="pg"></main>
-  <nav class="nav" id="mainNav">
+  <nav class="nav" id="mainNav" style="display:none">
     <button class="nb on" id="nb0" onclick="go('home')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12L12 3l9 9M5 10v9a1 1 0 001 1h4v-4h4v4h4a1 1 0 001-1v-9"/></svg>Inicio
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>Hoy
     </button>
-    <button class="nb" id="nb1" onclick="go('importar')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Importar
+    <button class="nb" id="nb1" onclick="go('contenedores')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8V21H3V8M23 3H1v5h22V3z"/><path d="M10 12h4"/></svg>Contenedores
     </button>
-    <button class="nb" id="nb2" onclick="go('buscar')">
+    <button class="nb" id="nb2" onclick="go('asignar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Asignar
+    </button>
+    <button class="nb" id="nb3" onclick="go('buscar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Buscar
-    </button>
-    <button class="nb" id="nb3" onclick="go('audit')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>Auditoría
     </button>
   </nav>
 </div>
-
 <div class="dlg-bg" id="dlg">
   <div class="dlg">
     <div class="dlg-t" id="dlgT"></div>
@@ -157,105 +139,79 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
 <div id="toast"></div>
 
 <script>
-// ════════════════════════════════════════════════════════════════════
-// STC EXPRESS — FRONTEND MIGRADO A SUPABASE
-// ════════════════════════════════════════════════════════════════════
-
 const SUPABASE_URL = 'https://vqdepoedhhhggqzmazie.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxZGVwb2VkaGhoZ2dxem1hemllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTM4MzIsImV4cCI6MjA5MzA2OTgzMn0.B5kuBgcIHFnrFCMAD96VwIb6cbTu5eOZVdYhDrLMeV8';
-
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// ── State ────────────────────────────────────────────────────────
 const S = {
-  user: null,      // Supabase auth user
-  profile: null,   // profiles row
-  stack: [],
-  cont: null,      // contenedor seleccionado (UUID)
-  contenedores: [],
+  user: null, profile: null, stack: [],
   mensajeros: [],
-  asigMensId: null,
-  asigBolsaFija: null,
+  asigMensId: null, asigMensNombre: null,
   asigLista: [],
-  scanCb: null,
-  scanStream: null,
+  scanCb: null, scanStream: null,
+  auditFecha: null, // fecha seleccionada en auditoría
 };
 
-const nm = { home:0, importar:1, buscar:2, audit:3 };
+const nm = {home:0, contenedores:1, asignar:2, buscar:3};
 
-// ── Audio feedback ──────────────────────────────────────────────
-let _ac = null;
-function getAC(){ if(!_ac) _ac = new (window.AudioContext||window.webkitAudioContext)(); if(_ac.state==='suspended') _ac.resume(); return _ac; }
+// ── Audio ──
+let _ac=null;
+function getAC(){if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();if(_ac.state==='suspended')_ac.resume();return _ac;}
 function beep(type){
-  try{
-    const ac=getAC(), o=ac.createOscillator(), g=ac.createGain();
-    o.connect(g); g.connect(ac.destination);
-    if(type==='ok'){o.frequency.value=880;g.gain.value=.12;o.start();o.stop(ac.currentTime+.12);}
-    else if(type==='er'){o.frequency.value=280;g.gain.value=.15;o.start();o.stop(ac.currentTime+.25);}
-    else if(type==='wa'){o.frequency.value=660;g.gain.value=.1;o.start();o.stop(ac.currentTime+.08);setTimeout(()=>{const o2=ac.createOscillator(),g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=660;g2.gain.value=.1;o2.start();o2.stop(ac.currentTime+.08);},120);}
+  try{const ac=getAC(),o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);
+  if(type==='ok'){o.frequency.value=880;g.gain.value=.12;o.start();o.stop(ac.currentTime+.12);}
+  else if(type==='er'){o.frequency.value=280;g.gain.value=.15;o.start();o.stop(ac.currentTime+.25);}
+  else if(type==='wa'){o.frequency.value=660;g.gain.value=.1;o.start();o.stop(ac.currentTime+.08);setTimeout(()=>{const o2=ac.createOscillator(),g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=580;g2.gain.value=.1;o2.start();o2.stop(ac.currentTime+.12);},130);}
   }catch(e){}
 }
 
-// ── Supabase helpers ────────────────────────────────────────────
-async function q(table){ return sb.from(table); }
-
-async function rpc(fn, params){
-  const { data, error } = await sb.rpc(fn, params);
-  if(error) throw new Error(error.message);
-  return data;
-}
-
-// ── Router ──────────────────────────────────────────────────────
+// ── Router ──
 async function go(page, push=true){
   stopScan();
   if(push && page!=='home') S.stack.push(page);
   if(page==='home') S.stack=[];
-  document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on', i===(nm[page]??-1)));
+  document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===(nm[page]??-1)));
   document.getElementById('btnBack').classList.toggle('vis', S.stack.length>0 && page!=='home');
+  document.getElementById('barRight').innerHTML='';
   try{
     switch(page){
       case 'home':           await pgHome(); break;
       case 'login':          pgLogin(); break;
+      case 'contenedores':   await pgContenedores(); break;
+      case 'cont-detalle':   await pgContDetalle(); break;
       case 'importar':       pgImportar(); break;
       case 'asignar':        await pgAsignar(); break;
-      case 'asignar-scan':   await pgAsignarScan(); break;
+      case 'asignar-scan':   pgAsignarScan(); break;
       case 'asignar-lista':  pgAsignarLista(); break;
       case 'buscar':         pgBuscar(); break;
-      case 'audit':          await pgAudit(); break;
-      case 'audit-cont':     await pgAuditCont(); break;
+      case 'audit-mens':     await pgAuditMens(); break;
       default:               await pgHome();
     }
-  }catch(e){ setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`); }
+  }catch(e){setP(`<div class="ld"><p style="color:var(--red)">${esc(e.message)}</p></div>`);}
 }
+function goBack(){S.stack.pop();const p=S.stack[S.stack.length-1]||'home';S.stack.pop();go(p);}
 
-function goBack(){ S.stack.pop(); const p=S.stack[S.stack.length-1]||'home'; S.stack.pop(); go(p); }
-
-// ── UI Helpers ──────────────────────────────────────────────────
-function setBar(t,s){ document.getElementById('pgT').textContent=t; document.getElementById('pgS').textContent=s||''; }
-function setP(h){ document.getElementById('pg').innerHTML=h; }
-function esc(s){ return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function toast(msg,type='ok'){
-  beep(type);
-  const e=document.getElementById('toast'); e.textContent=msg; e.className=type+' show';
-  clearTimeout(e._t); e._t=setTimeout(()=>e.classList.remove('show'), 2500);
-}
+// ── UI helpers ──
+function setBar(t,s=''){document.getElementById('pgT').textContent=t;document.getElementById('pgS').textContent=s;}
+function setP(h){document.getElementById('pg').innerHTML=h;}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(msg,type='ok'){beep(type);const e=document.getElementById('toast');e.textContent=msg;e.className=type+' show';clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2800);}
+function loader(){return '<div class="ld"><div class="sp"></div></div>';}
+function cleanGuia(raw){const s=String(raw||'').trim().replace(/[^a-zA-Z0-9]/g,'');return s.length>=6?s:null;}
+function fmtDate(d){if(!d)return'—';try{return new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return d;}}
+function fmtTime(d){if(!d)return'—';try{return new Date(d).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}catch(e){return d;}}
+function todayISO(){return new Date().toISOString().slice(0,10);}
 function dialog(title,msg,guia,acts){
   document.getElementById('dlgT').textContent=title;
   document.getElementById('dlgM').textContent=msg;
-  const gEl=document.getElementById('dlgG'); gEl.textContent=guia||''; gEl.style.display=guia?'block':'none';
-  const aEl=document.getElementById('dlgA'); aEl.innerHTML='';
-  acts.forEach(a=>{ const b=document.createElement('button'); b.className='btn '+(a.c||'btn-o')+' btn-s'; b.textContent=a.l; b.onclick=a.fn; aEl.appendChild(b); });
+  const gEl=document.getElementById('dlgG');gEl.textContent=guia||'';gEl.style.display=guia?'block':'none';
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  acts.forEach(a=>{const b=document.createElement('button');b.className='btn '+(a.c||'btn-o')+' btn-s';b.textContent=a.l;b.onclick=a.fn;aEl.appendChild(b);});
   document.getElementById('dlg').classList.add('open');
 }
-function closeDlg(){ document.getElementById('dlg').classList.remove('open'); }
-function loader(){ return '<div class="ld"><div class="sp"></div></div>'; }
-function cleanGuia(raw){
-  const s = String(raw||'').trim().replace(/[^a-zA-Z0-9]/g,'');
-  if(s.length >= 12) return s;
-  if(s.length >= 6) return s;
-  return null;
-}
-function fmtDate(d){ if(!d) return '—'; try{ return new Date(d).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}); }catch(e){ return d; } }
+function closeDlg(){document.getElementById('dlg').classList.remove('open');}
+
+const stColor={pendiente:'b-am',verificado:'b-bl',asignado:'b-pu',en_ruta:'b-gr',entregado:'b-gr',devuelto:'b-rd',sobrante:'b-rd',fuera_zona:'b-gy'};
 
 // ══════════════════════════════════════════════════════════════════
 // LOGIN
@@ -265,14 +221,14 @@ function pgLogin(){
   document.getElementById('mainNav').style.display='none';
   setP(`
     <div style="max-width:320px;margin:40px auto;text-align:center">
-      <div style="font-size:42px;margin-bottom:16px">📦</div>
-      <h2 style="font-size:clamp(18px,5vw,22px);font-weight:700;margin-bottom:6px">STC Express</h2>
-      <p style="color:var(--tx2);font-size:var(--fss);margin-bottom:24px">Sistema de Mensajería</p>
+      <div style="font-size:44px;margin-bottom:14px">📦</div>
+      <h2 style="font-size:clamp(20px,5vw,24px);font-weight:700;margin-bottom:4px">STC Express</h2>
+      <p style="color:var(--tx2);font-size:var(--fss);margin-bottom:28px">Sistema de Mensajería · Suba</p>
       <div style="text-align:left">
         <label>Email</label>
         <input class="inp" type="email" id="loginEmail" placeholder="tu@email.com" style="margin-bottom:12px" autocomplete="email">
         <label>Contraseña</label>
-        <input class="inp" type="password" id="loginPass" placeholder="••••••••" style="margin-bottom:18px" autocomplete="current-password"
+        <input class="inp" type="password" id="loginPass" placeholder="••••••••" style="margin-bottom:20px" autocomplete="current-password"
           onkeydown="if(event.key==='Enter')doLogin()">
         <button class="btn btn-p btn-w" onclick="doLogin()" id="loginBtn">Iniciar sesión</button>
       </div>
@@ -280,94 +236,278 @@ function pgLogin(){
     </div>
   `);
 }
-
 async function doLogin(){
-  const email = document.getElementById('loginEmail').value.trim();
-  const pass = document.getElementById('loginPass').value;
-  const errEl = document.getElementById('loginErr');
-  const btn = document.getElementById('loginBtn');
-  if(!email||!pass){ errEl.textContent='Completa ambos campos'; errEl.style.display='block'; return; }
-  btn.disabled=true; btn.textContent='Cargando...'; errEl.style.display='none';
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  const errEl=document.getElementById('loginErr');
+  const btn=document.getElementById('loginBtn');
+  if(!email||!pass){errEl.textContent='Completa ambos campos';errEl.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Cargando...';errEl.style.display='none';
   try{
-    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-    if(error) throw error;
-    S.user = data.user;
-    // Get profile
-    const { data: prof } = await sb.from('profiles').select('*').eq('id', data.user.id).single();
-    S.profile = prof;
-    if(!prof || !prof.activo){ throw new Error('Usuario no activo'); }
+    const {data,error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error)throw error;
+    S.user=data.user;
+    const {data:prof}=await sb.from('profiles').select('*').eq('id',data.user.id).single();
+    S.profile=prof;
+    if(!prof||!prof.activo)throw new Error('Usuario no activo');
     document.getElementById('mainNav').style.display='flex';
-    toast('Bienvenido, ' + prof.nombre_completo, 'ok');
-    go('home', false);
+    toast('Bienvenido, '+prof.nombre_completo,'ok');
+    go('home',false);
   }catch(e){
-    errEl.textContent = e.message || 'Error de autenticación';
+    errEl.textContent=e.message||'Error de autenticación';
     errEl.style.display='block';
-    btn.disabled=false; btn.textContent='Iniciar sesión';
+    btn.disabled=false;btn.textContent='Iniciar sesión';
   }
 }
 
 // ══════════════════════════════════════════════════════════════════
-// HOME
+// HOME — Dashboard Hoy
 // ══════════════════════════════════════════════════════════════════
 async function pgHome(){
-  setBar('STC Express', S.profile?.nombre_completo||'');
-  if(!S.user){ go('login',false); return; }
+  if(!S.user){go('login',false);return;}
+  if(!S.auditFecha) S.auditFecha=todayISO();
+  setBar('STC Express',S.profile?.nombre_completo||'');
   setP(loader());
 
-  // Fetch contenedores recientes
-  const { data: conts } = await sb.from('contenedores')
-    .select('id, codigo, fecha_recepcion, estado, total_paquetes, cliente_origen')
-    .order('created_at', { ascending: false })
-    .limit(20);
-  S.contenedores = conts || [];
+  // Segmented control fechas
+  const hoy=todayISO();
+  const ayer=new Date(Date.now()-86400000).toISOString().slice(0,10);
+  const semanaInicio=new Date(Date.now()-6*86400000).toISOString().slice(0,10);
 
-  let h = `<div style="margin-bottom:14px">
-    <button class="btn btn-p btn-w" onclick="go('importar')" style="margin-bottom:8px">📦 Importar contenedor</button>
-    <button class="btn btn-o btn-w" onclick="showNuevoCont()">+ Nuevo contenedor vacío</button>
-  </div>
-  <h3 style="font-size:var(--fsm);color:var(--tx2);margin-bottom:8px">Contenedores recientes</h3>`;
+  const fechaLabel = S.auditFecha===hoy?'Hoy':S.auditFecha===ayer?'Ayer':fmtDate(S.auditFecha);
 
-  if(!conts||!conts.length){ h += '<p class="empty">No hay contenedores aún</p>'; }
-  else {
-    conts.forEach(c => {
-      const st = c.estado === 'cerrado' ? 'b-gy' : c.estado === 'en_proceso' ? 'b-am' : 'b-bl';
-      h += `<div class="card" onclick="selCont('${c.id}')">
+  // Fetch paquetes asignados en la fecha seleccionada
+  const diaStart=S.auditFecha+'T00:00:00';
+  const diaEnd=S.auditFecha+'T23:59:59';
+
+  const [{data:asignadosHoy},{data:pendientes},{data:entregadosHoy}] = await Promise.all([
+    sb.from('historial_paquetes')
+      .select('paquete_id, mensajero_nuevo, realizado_en, paquetes(num_guia,direccion_original,zonas(nombre)), profiles!mensajero_nuevo(nombre_completo)')
+      .eq('accion','asignado')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    sb.from('paquetes')
+      .select('id')
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null),
+    sb.from('historial_paquetes')
+      .select('paquete_id')
+      .eq('accion','entregado')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+  ]);
+
+  const totalAsig=asignadosHoy?.length||0;
+  const totalPend=pendientes?.length||0;
+  const totalEntr=entregadosHoy?.length||0;
+
+  // Agrupar por mensajero
+  const porMens={};
+  (asignadosHoy||[]).forEach(h=>{
+    const mId=h.mensajero_nuevo||'sin_mens';
+    const mNombre=h.profiles?.nombre_completo||'Sin asignar';
+    if(!porMens[mId]) porMens[mId]={nombre:mNombre,paquetes:[]};
+    porMens[mId].paquetes.push(h);
+  });
+
+  let h=`
+    <div class="seg">
+      <button class="seg-btn ${S.auditFecha===hoy?'on':''}" onclick="S.auditFecha='${hoy}';pgHome()">Hoy</button>
+      <button class="seg-btn ${S.auditFecha===ayer?'on':''}" onclick="S.auditFecha='${ayer}';pgHome()">Ayer</button>
+      <button class="seg-btn ${S.auditFecha!==hoy&&S.auditFecha!==ayer?'on':''}" onclick="pickFecha()">📅 ${S.auditFecha!==hoy&&S.auditFecha!==ayer?fechaLabel:'Fecha'}</button>
+    </div>
+    <div class="stat-row">
+      <div class="stat"><div class="stat-n" style="color:var(--acc)">${totalAsig}</div><div class="stat-l">Asignados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--grn)">${totalEntr}</div><div class="stat-l">Entregados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--red)">${totalPend}</div><div class="stat-l">Pendientes</div></div>
+    </div>
+  `;
+
+  if(totalAsig===0){
+    h+=`<p class="empty">Sin asignaciones el ${fechaLabel.toLowerCase()}</p>`;
+  } else {
+    h+=`<div class="section-title">Mensajeros · ${fechaLabel}</div>`;
+    Object.entries(porMens).forEach(([mId,mens])=>{
+      h+=`<div class="card" onclick="S._auditMensId='${mId}';S._auditMensNombre='${esc(mens.nombre)}';go('audit-mens')">
         <div class="card-row">
-          <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">📦</div>
+          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
           <div style="flex:1;min-width:0">
-            <div class="ct">${esc(c.codigo)}</div>
-            <div class="cs">${fmtDate(c.fecha_recepcion)} · ${c.total_paquetes||0} paquetes · ${esc(c.cliente_origen||'')}</div>
+            <div class="ct">${esc(mens.nombre)}</div>
+            <div class="cs">${mens.paquetes.length} paquetes asignados</div>
           </div>
-          <span class="b ${st}">${esc(c.estado)}</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
         </div>
       </div>`;
     });
   }
+
+  if(totalPend>0){
+    h+=`<div class="section-title">⚠️ Pendientes por asignar</div>
+    <div class="card" style="cursor:default;border-color:rgba(245,158,11,.3)">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-weight:600;font-size:var(--fsm)">${totalPend} paquetes sin asignar</div>
+          <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">En todos los contenedores activos</div>
+        </div>
+        <button class="btn btn-p btn-s" onclick="go('asignar')">Asignar</button>
+      </div>
+    </div>`;
+  }
   setP(h);
 }
 
-async function selCont(id){ S.cont=id; await go('asignar'); }
+function pickFecha(){
+  dialog('Seleccionar fecha','','',[{l:'Cancelar',fn:closeDlg}]);
+  document.getElementById('dlgM').innerHTML=`
+    <input type="date" class="inp" id="fechaPicker" value="${S.auditFecha}" max="${todayISO()}" style="margin-bottom:10px">
+    <button class="btn btn-p btn-w btn-s" onclick="const v=document.getElementById('fechaPicker').value;if(v){S.auditFecha=v;closeDlg();pgHome();}">Aplicar</button>
+  `;
+}
 
-function showNuevoCont(){
-  dialog('Nuevo contenedor', 'Ingresa el código del contenedor:', '', [
-    {l:'Cancelar',fn:closeDlg},
-    {l:'Crear',c:'btn-p',fn:async()=>{
-      const inp = document.querySelector('#dlg .dlg input');
-      const v = inp?.value?.trim();
-      if(!v){ toast('Ingresa un código','er'); return; }
-      closeDlg();
-      const { error } = await sb.from('contenedores').insert({
-        codigo: v, fecha_recepcion: new Date().toISOString().slice(0,10),
-        estado: 'pendiente', importado_por: S.user.id
-      });
-      if(error){ toast('Error: '+error.message,'er'); return; }
-      toast('Contenedor creado ✓','ok');
-      go('home');
-    }}
-  ]);
-  // Add input to dialog
-  const m = document.getElementById('dlgM');
-  m.innerHTML += '<input class="inp" placeholder="Ej: EQ91714453" style="margin-top:10px" autofocus>';
+// ── Auditoría detalle mensajero ──
+async function pgAuditMens(){
+  const mId=S._auditMensId;
+  const mNombre=S._auditMensNombre||'Mensajero';
+  if(!mId){goBack();return;}
+  setBar(mNombre, fmtDate(S.auditFecha));
+  setP(loader());
+
+  const diaStart=S.auditFecha+'T00:00:00';
+  const diaEnd=S.auditFecha+'T23:59:59';
+
+  const {data:eventos}=await sb.from('historial_paquetes')
+    .select('paquete_id, accion, realizado_en, paquetes(num_guia, destinatario, direccion_original, estado, zonas(nombre))')
+    .eq('mensajero_nuevo', mId)
+    .eq('accion','asignado')
+    .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
+    .order('realizado_en',{ascending:false});
+
+  if(!eventos||!eventos.length){setP('<p class="empty">Sin paquetes asignados</p>');return;}
+
+  let h=`<div class="stat-row">
+    <div class="stat"><div class="stat-n">${eventos.length}</div><div class="stat-l">Asignados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--grn)">${eventos.filter(e=>e.paquetes?.estado==='entregado').length}</div><div class="stat-l">Entregados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--red)">${eventos.filter(e=>e.paquetes?.estado==='devuelto').length}</div><div class="stat-l">Devueltos</div></div>
+  </div>`;
+
+  eventos.forEach(ev=>{
+    const p=ev.paquetes;
+    if(!p)return;
+    h+=`<div class="card" onclick="document.getElementById('buscarInput')&&(document.getElementById('buscarInput').value='${esc(p.num_guia)}');go('buscar').then(()=>doSearch())" style="cursor:pointer">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="min-width:0;flex:1">
+          <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600;color:var(--acc)">${esc(p.num_guia)}</div>
+          <div style="font-size:var(--fss);margin-top:2px">${esc(p.destinatario)}</div>
+          <div style="font-size:var(--fss);color:var(--tx2);margin-top:1px">${esc(p.direccion_original||'').slice(0,50)}</div>
+          <div style="margin-top:4px"><span class="b b-bl" style="font-size:10px">${esc(p.zonas?.nombre||'Sin zona')}</span></div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <span class="b ${stColor[p.estado]||'b-gy'}">${esc(p.estado)}</span>
+          <div style="font-size:var(--fss);color:var(--tx3);margin-top:3px">${fmtTime(ev.realizado_en)}</div>
+        </div>
+      </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CONTENEDORES
+// ══════════════════════════════════════════════════════════════════
+async function pgContenedores(){
+  setBar('Contenedores','');
+  document.getElementById('barRight').innerHTML=`<button class="btn btn-p btn-s" onclick="go('importar')">+ Importar</button>`;
+  setP(loader());
+
+  const {data:conts}=await sb.from('contenedores')
+    .select('id,codigo,fecha_recepcion,estado,total_paquetes,cliente_origen')
+    .order('created_at',{ascending:false}).limit(30);
+
+  if(!conts||!conts.length){
+    setP(`<div style="text-align:center;padding:40px 14px">
+      <div style="font-size:36px;margin-bottom:12px">📦</div>
+      <p style="font-weight:600;margin-bottom:8px">No hay contenedores aún</p>
+      <button class="btn btn-p" onclick="go('importar')">Importar primer contenedor</button>
+    </div>`);
+    return;
+  }
+
+  const stCont={pendiente:{c:'b-am',icon:'⏳'},en_proceso:{c:'b-bl',icon:'🔄'},cerrado:{c:'b-gy',icon:'✓'}};
+  let h='';
+  conts.forEach(c=>{
+    const st=stCont[c.estado]||stCont.pendiente;
+    h+=`<div class="card" onclick="S._contId='${c.id}';S._contCodigo='${esc(c.codigo)}';go('cont-detalle')">
+      <div class="card-row">
+        <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc);font-size:22px">${st.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div class="ct">${esc(c.codigo)}</div>
+          <div class="cs">${fmtDate(c.fecha_recepcion)} · ${c.total_paquetes||0} paquetes${c.cliente_origen?' · '+esc(c.cliente_origen):''}</div>
+        </div>
+        <span class="b ${st.c}">${esc(c.estado)}</span>
+      </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ── Detalle de contenedor ──
+async function pgContDetalle(){
+  const contId=S._contId;
+  const codigo=S._contCodigo||'Contenedor';
+  if(!contId){goBack();return;}
+  setBar(codigo,'');
+  setP(loader());
+
+  const {data:paq}=await sb.from('paquetes')
+    .select('estado,zona_id,mensajero_id,zonas(nombre),profiles!mensajero_id(nombre_completo)')
+    .eq('contenedor_id',contId);
+
+  if(!paq||!paq.length){setP('<p class="empty">Sin paquetes</p>');return;}
+
+  const total=paq.length;
+  const cntr={};
+  paq.forEach(p=>{ cntr[p.estado]=(cntr[p.estado]||0)+1; });
+
+  // Por zona
+  const byZona={};
+  paq.forEach(p=>{
+    const z=p.zonas?.nombre||'Sin zona';
+    if(!byZona[z]) byZona[z]={total:0,pendiente:0,asignado:0,entregado:0,devuelto:0};
+    byZona[z].total++;
+    if(['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id) byZona[z].pendiente++;
+    else if(['asignado','en_ruta'].includes(p.estado)) byZona[z].asignado++;
+    else if(p.estado==='entregado') byZona[z].entregado++;
+    else if(p.estado==='devuelto') byZona[z].devuelto++;
+  });
+
+  let h=`
+    <div class="stat-row">
+      <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Total</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--amb)">${cntr.pendiente||0}</div><div class="stat-l">Pendientes</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--acc)">${(cntr.asignado||0)+(cntr.verificado||0)}</div><div class="stat-l">Asignados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--grn)">${cntr.entregado||0}</div><div class="stat-l">Entregados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--red)">${cntr.devuelto||0}</div><div class="stat-l">Devueltos</div></div>
+    </div>
+    <div class="progress" style="margin-bottom:14px">
+      <div class="progress-bar" style="width:${Math.round(100*(cntr.entregado||0)/total)}%;background:var(--grn)"></div>
+    </div>
+    <div class="section-title">Por zona</div>
+    <table class="tbl">
+      <tr><th>Zona</th><th>Total</th><th>Pend</th><th>Asig</th><th>Entr</th></tr>
+  `;
+  Object.entries(byZona).sort((a,b)=>b[1].total-a[1].total).forEach(([z,v])=>{
+    h+=`<tr>
+      <td><span style="font-size:var(--fss);font-family:var(--mo)">${esc(z)}</span></td>
+      <td>${v.total}</td>
+      <td style="color:${v.pendiente?'var(--amb)':'var(--tx3)'}">${v.pendiente}</td>
+      <td style="color:${v.asignado?'var(--acc)':'var(--tx3)'}">${v.asignado}</td>
+      <td style="color:${v.entregado?'var(--grn)':'var(--tx3)'}">${v.entregado}</td>
+    </tr>`;
+  });
+  h+='</table>';
+
+  if(cntr.pendiente>0){
+    h+=`<button class="btn btn-p btn-w" style="margin-top:14px" onclick="go('asignar')">Asignar paquetes pendientes →</button>`;
+  }
+  setP(h);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -380,296 +520,207 @@ function pgImportar(){
          ondragover="event.preventDefault();this.classList.add('drag')"
          ondragleave="this.classList.remove('drag')"
          ondrop="event.preventDefault();this.classList.remove('drag');handleFile(event.dataTransfer.files[0])">
-      <div class="file-drop-icon">📂</div>
+      <div style="font-size:36px;margin-bottom:8px">📂</div>
       <p style="font-weight:600;margin-bottom:4px">Selecciona o arrastra el archivo Excel</p>
-      <p style="font-size:var(--fss);color:var(--tx3)">Archivo .xlsx del proveedor</p>
+      <p style="font-size:var(--fss);color:var(--tx3)">.xlsx del proveedor</p>
     </div>
     <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
     <div id="importPreview"></div>
   `);
 }
 
-let _importData = null;
-
+let _importData=null;
 async function handleFile(file){
-  if(!file) return;
-  const preview = document.getElementById('importPreview');
-  preview.innerHTML = loader();
-
+  if(!file)return;
+  const preview=document.getElementById('importPreview');
+  preview.innerHTML=loader();
   try{
-    const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, {type:'array'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
-
-    if(!rows.length){ preview.innerHTML='<p class="empty">Archivo vacío</p>'; return; }
-
-    // Detect columns
-    const h = Object.keys(rows[0]);
-    const colGuia = h.find(c=>/tracking/i.test(c));
-    const colDest = h.find(c=>/^cliente$/i.test(c));
-    const colDir  = h.find(c=>/direcci[oó]n\s*cliente/i.test(c));
-    const colTel  = h.find(c=>/tel[eé]fono\s*cliente/i.test(c));
-    const colLat  = h.find(c=>/latitud/i.test(c));
-    const colLon  = h.find(c=>/longitud/i.test(c));
-    const colCont = h.find(c=>/[uú]ltimo\s*contenedor/i.test(c));
-    const colCP   = h.find(c=>/c[oó]digo\s*postal/i.test(c));
-    const colMun  = h.find(c=>/municipio/i.test(c));
-    const colCol  = h.find(c=>/colonia/i.test(c));
-    const colOrden = h.find(c=>/no\.\s*de\s*orden/i.test(c));
-    const colClOr = h.find(c=>/cliente\s*primario/i.test(c));
-    const colPeso = h.find(c=>/peso\s*f[ií]sico/i.test(c));
-    const colFCre = h.find(c=>/fecha\s*creaci[oó]n\s*tn/i.test(c));
-    const colFPro = h.find(c=>/fecha\s*promesa/i.test(c));
-
-    if(!colGuia){ preview.innerHTML='<p style="color:var(--red)">No se encontró columna "Tracking number"</p>'; return; }
-
-    const contCode = rows[0][colCont] || 'CONTENEDOR_' + new Date().toISOString().slice(0,10);
-
-    // Parse dates: DD-MM-YYYY → YYYY-MM-DD
-    function parseFecha(v){
-      if(!v) return null;
-      const s = String(v).trim();
-      const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
-      if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
-      if(/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
-      return null;
-    }
-
-    // Build paquetes array
-    const paquetes = rows.filter(r => r[colGuia]).map(r => ({
-      guia: String(r[colGuia]).trim(),
-      destinatario: String(r[colDest]||'Sin nombre').trim(),
-      telefono: r[colTel] ? String(r[colTel]).trim() : null,
-      direccion: String(r[colDir]||'').trim(),
-      cp: r[colCP] ? String(r[colCP]).trim() : null,
-      municipio: r[colMun] ? String(r[colMun]).trim() : null,
-      colonia: r[colCol] ? String(r[colCol]).trim() : null,
-      lat: r[colLat] ? parseFloat(r[colLat]) : null,
-      lon: r[colLon] ? parseFloat(r[colLon]) : null,
-      numero_orden: r[colOrden] ? String(r[colOrden]).trim() : null,
-      cliente_origen: r[colClOr] ? String(r[colClOr]).trim() : null,
-      peso: r[colPeso] ? parseFloat(r[colPeso]) : null,
-      fecha_creacion: parseFecha(r[colFCre]),
-      fecha_promesa: parseFecha(r[colFPro]),
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){preview.innerHTML='<p class="empty">Archivo vacío</p>';return;}
+    const h=Object.keys(rows[0]);
+    const col=k=>h.find(c=>new RegExp(k,'i').test(c));
+    const colGuia=col('tracking');
+    if(!colGuia){preview.innerHTML='<p style="color:var(--red);margin-top:12px">No se encontró columna "Tracking number"</p>';return;}
+    const colDest=col('^cliente$');
+    const colDir=col('direcci[oó]n\\s*cliente');
+    const colTel=col('tel[eé]fono\\s*cliente');
+    const colLat=col('^latitud$');
+    const colLon=col('^longitud$');
+    const colCont=col('[uú]ltimo\\s*contenedor');
+    const colCP=col('c[oó]digo\\s*postal');
+    const colMun=col('^municipio$');
+    const colCol=col('^colonia$');
+    const colOrden=col('no\\.\\s*de\\s*orden');
+    const colClOr=col('cliente\\s*primario');
+    const colPeso=col('peso\\s*f[ií]sico');
+    const colFCre=col('fecha\\s*creaci[oó]n\\s*tn');
+    const colFPro=col('fecha\\s*promesa');
+    function parseFecha(v){if(!v)return null;const s=String(v).trim();const m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);if(m)return`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);return null;}
+    const contCode=rows[0][colCont]||'CONT_'+new Date().toISOString().slice(0,10);
+    const paquetes=rows.filter(r=>r[colGuia]).map(r=>({
+      guia:String(r[colGuia]).trim(),
+      destinatario:String(r[colDest]||'Sin nombre').trim(),
+      telefono:r[colTel]?String(r[colTel]).trim():null,
+      direccion:String(r[colDir]||'').trim(),
+      cp:r[colCP]?String(r[colCP]).trim():null,
+      municipio:r[colMun]?String(r[colMun]).trim():null,
+      colonia:r[colCol]?String(r[colCol]).trim():null,
+      lat:r[colLat]?parseFloat(r[colLat]):null,
+      lon:r[colLon]?parseFloat(r[colLon]):null,
+      numero_orden:r[colOrden]?String(r[colOrden]).trim():null,
+      cliente_origen:r[colClOr]?String(r[colClOr]).trim():null,
+      peso:r[colPeso]?parseFloat(r[colPeso]):null,
+      fecha_creacion:parseFecha(r[colFCre]),
+      fecha_promesa:parseFecha(r[colFPro]),
     }));
-
-    _importData = { paquetes, contCode, fileName: file.name };
-
-    // Show preview
-    const dupes = new Set(); let uniq = 0;
-    paquetes.forEach(p => { if(!dupes.has(p.guia)){ dupes.add(p.guia); uniq++; } });
-
-    preview.innerHTML = `
+    _importData={paquetes,contCode,fileName:file.name};
+    preview.innerHTML=`
       <div style="margin-top:14px">
         <div class="card" style="cursor:default">
           <div style="margin-bottom:8px"><span class="b b-bl">📦 ${esc(contCode)}</span></div>
           <div class="stat-row">
             <div class="stat"><div class="stat-n">${paquetes.length}</div><div class="stat-l">Paquetes</div></div>
-            <div class="stat"><div class="stat-n">${uniq}</div><div class="stat-l">Guías únicas</div></div>
-            <div class="stat"><div class="stat-n">${paquetes.length - uniq}</div><div class="stat-l">Duplicados</div></div>
+            <div class="stat"><div class="stat-n">${new Set(paquetes.map(p=>p.guia)).size}</div><div class="stat-l">Guías únicas</div></div>
           </div>
-          <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:4px">📁 ${esc(file.name)}</div>
+          <div style="font-size:var(--fss);color:var(--tx3)">📁 ${esc(file.name)}</div>
         </div>
         <button class="btn btn-g btn-w" onclick="doImport()" id="importBtn">✓ Importar ${paquetes.length} paquetes</button>
         <button class="btn btn-o btn-w" style="margin-top:8px" onclick="pgImportar()">Cancelar</button>
-      </div>
-    `;
-  }catch(e){
-    preview.innerHTML = `<p style="color:var(--red);margin-top:12px">${esc(e.message)}</p>`;
-  }
+      </div>`;
+  }catch(e){preview.innerHTML=`<p style="color:var(--red);margin-top:12px">${esc(e.message)}</p>`;}
 }
 
 async function doImport(){
-  if(!_importData) return;
-  const btn = document.getElementById('importBtn');
-  btn.disabled=true; btn.textContent='Importando...';
-  const preview = document.getElementById('importPreview');
-
+  if(!_importData)return;
+  const btn=document.getElementById('importBtn');
+  btn.disabled=true;
+  const {paquetes,contCode,fileName}=_importData;
   try{
-    const { paquetes, contCode, fileName } = _importData;
-
-    // 1. Create or get contenedor
-    let { data: existingCont } = await sb.from('contenedores').select('id').eq('codigo', contCode).single();
+    let{data:existingCont}=await sb.from('contenedores').select('id').eq('codigo',contCode).single();
     let contId;
-    if(existingCont){
-      contId = existingCont.id;
-    } else {
-      const { data: newCont, error: contErr } = await sb.from('contenedores').insert({
-        codigo: contCode,
-        fecha_recepcion: new Date().toISOString().slice(0,10),
-        cliente_origen: paquetes[0]?.cliente_origen || null,
-        estado: 'pendiente',
-        total_paquetes: paquetes.length,
-        archivo_original: fileName,
-        importado_por: S.user.id
+    if(existingCont){contId=existingCont.id;}
+    else{
+      const{data:newCont,error:ce}=await sb.from('contenedores').insert({
+        codigo:contCode,fecha_recepcion:new Date().toISOString().slice(0,10),
+        cliente_origen:paquetes[0]?.cliente_origen||null,
+        estado:'pendiente',total_paquetes:paquetes.length,
+        archivo_original:fileName,importado_por:S.user.id
       }).select().single();
-      if(contErr) throw contErr;
-      contId = newCont.id;
+      if(ce)throw ce;
+      contId=newCont.id;
     }
-
-    // 2. Call importar_paquete for each — in batches to show progress
-    const batchSize = 50;
-    let total=0, nuevos=0, actualizados=0, sinCambios=0, errores=0, conZona=0;
-    const errorList = [];
-
-    for(let i=0; i < paquetes.length; i += batchSize){
-      const batch = paquetes.slice(i, i + batchSize);
-      const promises = batch.map(p =>
-        sb.rpc('importar_paquete', {
-          p_num_guia: p.guia,
-          p_contenedor_id: contId,
-          p_destinatario: p.destinatario,
-          p_telefono: p.telefono,
-          p_direccion_original: p.direccion,
-          p_codigo_postal: p.cp,
-          p_municipio: p.municipio,
-          p_colonia: p.colonia,
-          p_lat_proveedor: p.lat,
-          p_lon_proveedor: p.lon,
-          p_numero_orden: p.numero_orden,
-          p_cliente_origen: p.cliente_origen,
-          p_peso_kg: p.peso,
-          p_fecha_creacion_guia: p.fecha_creacion,
-          p_fecha_promesa_entrega: p.fecha_promesa,
-          p_importado_por: S.user.id
-        }).then(({data,error}) => {
-          if(error) return { resultado:'error', detalle:error.message };
-          return data?.[0] || data;
-        })
-      );
-
-      const results = await Promise.all(promises);
-      results.forEach(r => {
-        total++;
-        if(!r) return;
-        if(r.resultado === 'nuevo') nuevos++;
-        else if(r.resultado === 'actualizado') actualizados++;
-        else if(r.resultado === 'sin_cambios') sinCambios++;
-        else if(r.resultado === 'error'){ errores++; errorList.push(r.detalle); }
-        if(r.zona_id) conZona++;
+    setP(`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
+      <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
+      <div style="font-size:var(--fsm);font-weight:600">Importando...</div>
+      <div style="font-size:var(--fss);color:var(--tx2)" id="importSub">0 de ${paquetes.length}</div>
+      <div style="width:200px"><div class="progress"><div class="progress-bar" id="importBar" style="width:0%"></div></div></div>
+    </div>`);
+    let ok=0,actual=0,sinCambios=0,conZona=0,errs=0;
+    const batchSize=50;
+    for(let i=0;i<paquetes.length;i+=batchSize){
+      const batch=paquetes.slice(i,i+batchSize);
+      const res=await Promise.all(batch.map(p=>
+        sb.rpc('importar_paquete',{
+          p_num_guia:p.guia,p_contenedor_id:contId,
+          p_destinatario:p.destinatario,p_telefono:p.telefono,
+          p_direccion_original:p.direccion,p_codigo_postal:p.cp,
+          p_municipio:p.municipio,p_colonia:p.colonia,
+          p_lat_proveedor:p.lat,p_lon_proveedor:p.lon,
+          p_numero_orden:p.numero_orden,p_cliente_origen:p.cliente_origen,
+          p_peso_kg:p.peso,p_fecha_creacion_guia:p.fecha_creacion,
+          p_fecha_promesa_entrega:p.fecha_promesa,p_importado_por:S.user.id
+        }).then(({data,error})=>{if(error)return{resultado:'error'};return data?.[0]||data;})
+      ));
+      res.forEach(r=>{
+        if(!r)return;
+        if(r.resultado==='nuevo')ok++;
+        else if(r.resultado==='actualizado')actual++;
+        else if(r.resultado==='sin_cambios')sinCambios++;
+        else if(r.resultado==='error')errs++;
+        if(r.zona_id)conZona++;
       });
-
-      // Update progress
-      const pct = Math.round(100 * (i + batch.length) / paquetes.length);
-      btn.textContent = `Importando... ${pct}%`;
+      const pct=Math.round(100*(i+batch.length)/paquetes.length);
+      const b=document.getElementById('importBar');const s=document.getElementById('importSub');
+      if(b)b.style.width=pct+'%';if(s)s.textContent=`${i+batch.length} de ${paquetes.length}`;
     }
-
-    // Update contenedor total
-    await sb.from('contenedores').update({ total_paquetes: total, estado: 'en_proceso' }).eq('id', contId);
-
-    // Show result
-    const sinZona = total - conZona;
-    preview.innerHTML = `
-      <div style="margin-top:14px">
-        <div class="card" style="cursor:default;border-color:var(--grn)">
-          <div style="font-size:var(--fsm);font-weight:600;color:var(--grn);margin-bottom:10px">✓ Importación completada</div>
-          <div class="stat-row">
-            <div class="stat"><div class="stat-n" style="color:var(--tx)">${total}</div><div class="stat-l">Total</div></div>
-            <div class="stat"><div class="stat-n" style="color:var(--grn)">${nuevos}</div><div class="stat-l">Nuevos</div></div>
-            <div class="stat"><div class="stat-n" style="color:var(--amb)">${actualizados}</div><div class="stat-l">Actualizados</div></div>
-          </div>
-          <div class="stat-row">
-            <div class="stat"><div class="stat-n" style="color:var(--acc)">${conZona}</div><div class="stat-l">Con zona</div></div>
-            <div class="stat"><div class="stat-n" style="color:${sinZona?'var(--red)':'var(--tx3)'}">${sinZona}</div><div class="stat-l">Sin zona</div></div>
-            <div class="stat"><div class="stat-n" style="color:var(--tx3)">${sinCambios}</div><div class="stat-l">Sin cambios</div></div>
-          </div>
-          ${errores ? `<p style="color:var(--red);font-size:var(--fss);margin-top:6px">${errores} errores</p>` : ''}
+    await sb.from('contenedores').update({total_paquetes:ok+actual+sinCambios,estado:'en_proceso'}).eq('id',contId);
+    setP(`<div style="padding:14px">
+      <div class="card" style="cursor:default;border-color:var(--grn)">
+        <div style="color:var(--grn);font-weight:600;margin-bottom:10px">✓ Importación completada</div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-n">${ok+actual+sinCambios}</div><div class="stat-l">Total</div></div>
+          <div class="stat"><div class="stat-n" style="color:var(--grn)">${ok}</div><div class="stat-l">Nuevos</div></div>
+          <div class="stat"><div class="stat-n" style="color:var(--acc)">${conZona}</div><div class="stat-l">Con zona</div></div>
+          <div class="stat"><div class="stat-n" style="color:${ok+actual+sinCambios-conZona>0?'var(--red)':'var(--tx3)'}">${ok+actual+sinCambios-conZona}</div><div class="stat-l">Sin zona</div></div>
         </div>
-        <button class="btn btn-p btn-w" onclick="S.cont='${contId}';go('asignar')">Ir al contenedor →</button>
-        <button class="btn btn-o btn-w" style="margin-top:8px" onclick="go('home')">Volver al inicio</button>
       </div>
-    `;
-    _importData = null;
-    toast(`${nuevos} paquetes importados ✓`, 'ok');
-  }catch(e){
-    toast('Error: '+e.message, 'er');
-    btn.disabled=false; btn.textContent='Reintentar importación';
-  }
+      <button class="btn btn-p btn-w" onclick="go('asignar')">Ir a asignar →</button>
+      <button class="btn btn-o btn-w" style="margin-top:8px" onclick="go('contenedores')">Ver contenedores</button>
+    </div>`);
+    _importData=null;
+    toast(`${ok} paquetes importados ✓`,'ok');
+  }catch(e){toast('Error: '+e.message,'er');btn.disabled=false;btn.textContent='Reintentar';}
 }
 
 // ══════════════════════════════════════════════════════════════════
-// ASIGNAR — Config + Scan + Lista
+// ASIGNAR — Multi-contenedor, sin restricción de contenedor
 // ══════════════════════════════════════════════════════════════════
 async function pgAsignar(){
-  if(!S.cont){ go('home'); return; }
+  setBar('Asignar paquetes','');
   setP(loader());
-
-  // Get contenedor info
-  const { data: cont } = await sb.from('contenedores').select('*').eq('id', S.cont).single();
-  if(!cont){ toast('Contenedor no encontrado','er'); go('home'); return; }
-  setBar(cont.codigo, 'Asignar paquetes');
-
-  // Get resumen
-  const { data: paq } = await sb.from('paquetes')
-    .select('estado, zona_id, mensajero_id, zonas(nombre)')
-    .eq('contenedor_id', S.cont);
-
-  const total = paq?.length || 0;
-  const pendientes = paq?.filter(p => p.estado === 'pendiente').length || 0;
-  const verificados = paq?.filter(p => p.estado === 'verificado').length || 0;
-  const asignados = paq?.filter(p => ['asignado','en_ruta'].includes(p.estado)).length || 0;
-
-  // Get mensajeros
-  const { data: mens } = await sb.from('profiles')
-    .select('id, nombre_completo, zona_principal')
-    .eq('activo', true)
-    .in('rol', ['mensajero', 'admin', 'operador']);
-  S.mensajeros = mens || [];
-
-  let h = `
-    <div class="stat-row">
-      <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Total</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--amb)">${pendientes}</div><div class="stat-l">Pendientes</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--acc)">${verificados}</div><div class="stat-l">Verificados</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--grn)">${asignados}</div><div class="stat-l">Asignados</div></div>
-    </div>
-    <div style="margin-top:14px">
-      <label>Asignar a</label>
+  const{data:mens}=await sb.from('profiles').select('id,nombre_completo')
+    .eq('activo',true).in('rol',['mensajero','admin','operador']).order('nombre_completo');
+  S.mensajeros=mens||[];
+  setP(`
+    <div style="margin-bottom:14px">
+      <label>Mensajero</label>
       <select class="inp sel" id="selMens">
-        <option value="">— Seleccionar mensajero —</option>
+        <option value="">— Seleccionar —</option>
         <option value="SIN_ASIGNAR">Sin asignar (bolsa)</option>
-        ${(mens||[]).map(m => `<option value="${m.id}">${esc(m.nombre_completo)}</option>`).join('')}
+        ${(mens||[]).map(m=>`<option value="${m.id}">${esc(m.nombre_completo)}</option>`).join('')}
       </select>
     </div>
-    <div id="bolsaWrap" style="display:none;margin-top:10px">
+    <div id="bolsaWrap" style="display:none;margin-bottom:14px">
       <label>Nombre de bolsa</label>
-      <input class="inp" id="bolsaName" placeholder="Ej: Imperial A">
+      <input class="inp" id="bolsaNombre" placeholder="Ej: Imperial A, Bolsa 1...">
     </div>
-    <button class="btn btn-p btn-w" style="margin-top:14px" onclick="iniciarAsignacion()">Iniciar escaneo</button>
-  `;
-  setP(h);
-
-  document.getElementById('selMens').onchange = function(){
-    document.getElementById('bolsaWrap').style.display = this.value==='SIN_ASIGNAR' ? 'block' : 'none';
+    <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">Iniciar escaneo →</button>
+    <p style="font-size:var(--fss);color:var(--tx3);margin-top:12px;text-align:center">
+      Se validarán paquetes de cualquier contenedor activo
+    </p>
+  `);
+  document.getElementById('selMens').onchange=function(){
+    document.getElementById('bolsaWrap').style.display=this.value==='SIN_ASIGNAR'?'block':'none';
   };
 }
 
 function iniciarAsignacion(){
-  const mensId = document.getElementById('selMens').value;
-  if(!mensId){ toast('Selecciona un mensajero','er'); return; }
-  S.asigMensId = mensId;
-  S.asigBolsaFija = mensId === 'SIN_ASIGNAR' ? document.getElementById('bolsaName')?.value?.trim() || null : null;
-  S.asigLista = [];
+  const mensId=document.getElementById('selMens').value;
+  if(!mensId){toast('Selecciona un mensajero','er');return;}
+  S.asigMensId=mensId;
+  S.asigMensNombre=mensId==='SIN_ASIGNAR'
+    ?(document.getElementById('bolsaNombre')?.value?.trim()||'Bolsa')
+    :S.mensajeros.find(m=>m.id===mensId)?.nombre_completo||'Mensajero';
+  S.asigLista=[];
   go('asignar-scan');
 }
 
-async function pgAsignarScan(){
-  const mensName = S.asigMensId === 'SIN_ASIGNAR'
-    ? 'Bolsa: ' + (S.asigBolsaFija || 'Sin nombre')
-    : S.mensajeros.find(m => m.id === S.asigMensId)?.nombre_completo || 'Mensajero';
-  setBar('Escaneando', mensName);
+function pgAsignarScan(){
+  setBar('Escaneando',S.asigMensNombre);
   setP(`
     <div class="scan-area" id="scanArea"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
-    <div id="sst" style="text-align:center;color:var(--tx2);font-size:var(--fss);margin:8px 0">Apunta al código de barras</div>
+    <div style="text-align:center;color:var(--tx2);font-size:var(--fss);margin:6px 0" id="sst">Apunta al código</div>
     <div style="display:flex;gap:8px;margin:8px 0">
       <input class="inp" id="miInput" placeholder="O escribe la guía..." style="flex:1"
-        onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('Código no válido','er');this.value='';}}">
+        onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');this.value='';}}" >
       <button class="btn btn-p btn-s" onclick="const inp=document.getElementById('miInput');const v=inp.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');inp.value='';}">OK</button>
     </div>
-    <div id="scanResults" style="max-height:200px;overflow-y:auto"></div>
-    <div style="display:flex;gap:8px;margin-top:12px">
-      <button class="btn btn-o" style="flex:1" onclick="go('asignar-lista')">Ver lista (${S.asigLista.length})</button>
+    <div id="scanResults" style="max-height:180px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-o" style="flex:1" id="btnVerLista" onclick="go('asignar-lista')">Ver lista (0)</button>
       <button class="btn btn-g" style="flex:1" onclick="confirmarAsignacion()">Confirmar ✓</button>
     </div>
   `);
@@ -677,156 +728,155 @@ async function pgAsignarScan(){
 }
 
 async function onAsigCode(guia){
-  if(S.asigLista.find(i => i.guia === guia)){
-    toast('Ya escaneado','wa'); return;
+  const ya=S.asigLista.find(i=>i.guia===guia);
+  if(ya){toast('Ya escaneado','wa');return;}
+
+  // Buscar en CUALQUIER contenedor
+  const{data:paq,error}=await sb.from('paquetes')
+    .select('id,estado,mensajero_id,zona_id,contenedor_id,zonas(nombre),profiles!mensajero_id(nombre_completo),contenedores(codigo)')
+    .eq('num_guia',guia).maybeSingle();
+
+  const el=document.getElementById('scanResults');
+  const updateCount=()=>{const b=document.getElementById('btnVerLista');if(b)b.textContent=`Ver lista (${S.asigLista.length})`;};
+
+  if(!paq){
+    // No existe en ningún contenedor → sobrante real
+    S.asigLista.push({guia,estado:'sobrante',zona:'SOBRANTE'});
+    el.innerHTML=`<div class="scan-result" style="background:rgba(239,68,68,.1);color:var(--red)">📍 ${guia} — SOBRANTE</div>`+el.innerHTML;
+    beep('wa');
+    updateCount();
+    return;
   }
-  const el = document.getElementById('scanResults');
 
-  try{
-    // Check paquete in this contenedor
-    const { data: paq } = await sb.from('paquetes')
-      .select('id, estado, zona_id, mensajero_id, zonas(nombre)')
-      .eq('num_guia', guia)
-      .single();
+  const zonaNombre=paq.zonas?.nombre||'Sin zona';
+  const contCodigo=paq.contenedores?.codigo||'—';
+  const yaAsignadoAMi=paq.mensajero_id===S.asigMensId;
+  const yaAsignadoAOtro=paq.mensajero_id && paq.mensajero_id!==S.asigMensId && ['asignado','en_ruta'].includes(paq.estado);
 
-    if(!paq){
-      // Sobrante
-      S.asigLista.push({ guia, estado:'sobrante', zona:'SOBRANTE' });
-      el.innerHTML = `<div class="scan-result" style="background:rgba(239,68,68,.1);color:var(--red)">📍 ${guia} — SOBRANTE</div>` + el.innerHTML;
-      beep('wa');
-    } else if(['asignado','en_ruta'].includes(paq.estado) && paq.mensajero_id){
-      el.innerHTML = `<div class="scan-result" style="background:rgba(245,158,11,.1);color:var(--amb)">⚠ ${guia} — YA ASIGNADO</div>` + el.innerHTML;
-      beep('wa');
-      // Offer reassign
-      dialog('Reasignar?', `Este paquete ya está asignado.`, guia, [
-        {l:'Cancelar',fn:closeDlg},
-        {l:'Reasignar',c:'btn-p',fn:()=>{
+  if(yaAsignadoAMi){
+    // Ya asignado al mismo mensajero → solo aviso, no agregar
+    el.innerHTML=`<div class="scan-result" style="background:rgba(59,130,246,.1);color:var(--acc)">ℹ️ ${guia} — ya asignado a ti</div>`+el.innerHTML;
+    beep('wa');
+    return;
+  }
+
+  if(yaAsignadoAOtro){
+    // Asignado a otro mensajero → preguntar
+    const otroNombre=paq.profiles?.nombre_completo||'otro mensajero';
+    beep('wa');
+    dialog(
+      'Paquete ya asignado',
+      `Este paquete está asignado a ${otroNombre}. ¿Deseas reasignarlo a ${S.asigMensNombre}?`,
+      guia,
+      [
+        {l:'No, dejar así',fn:()=>{closeDlg();}},
+        {l:'Sí, reasignar',c:'btn-p',fn:()=>{
           closeDlg();
-          S.asigLista.push({ guia, estado:'reasignar', zona: paq.zonas?.nombre||'—', paqId: paq.id });
-          toast('Agregado para reasignar','ok');
+          S.asigLista.push({guia,estado:'reasignar',zona:zonaNombre,paqId:paq.id,contCodigo});
+          el.innerHTML=`<div class="scan-result" style="background:rgba(245,158,11,.1);color:var(--amb)">↔️ ${guia} — REASIGNAR (${zonaNombre})</div>`+el.innerHTML;
+          beep('ok');
+          updateCount();
         }}
-      ]);
-    } else {
-      // Disponible
-      S.asigLista.push({ guia, estado:'disponible', zona: paq.zonas?.nombre||'—', paqId: paq.id });
-      el.innerHTML = `<div class="scan-result" style="background:rgba(16,185,129,.1);color:var(--grn)">✓ ${guia} — ${paq.zonas?.nombre||'Sin zona'}</div>` + el.innerHTML;
-      beep('ok');
-    }
-    // Update count
-    const listBtn = document.querySelector('.btn.btn-o');
-    if(listBtn) listBtn.textContent = `Ver lista (${S.asigLista.length})`;
-  }catch(e){
-    toast('Error: '+e.message, 'er');
+      ]
+    );
+    return;
   }
+
+  // Disponible (pendiente o verificado o devuelto)
+  S.asigLista.push({guia,estado:'disponible',zona:zonaNombre,paqId:paq.id,contCodigo});
+  el.innerHTML=`<div class="scan-result" style="background:rgba(16,185,129,.1);color:var(--grn)">✓ ${guia} — ${zonaNombre} · ${contCodigo}</div>`+el.innerHTML;
+  beep('ok');
+  updateCount();
 }
 
 function pgAsignarLista(){
-  const mensName = S.asigMensId === 'SIN_ASIGNAR'
-    ? 'Bolsa: ' + (S.asigBolsaFija || 'Sin nombre')
-    : S.mensajeros.find(m => m.id === S.asigMensId)?.nombre_completo || 'Mensajero';
-  setBar(`Lista (${S.asigLista.length})`, mensName);
-
-  let h = '';
-  if(!S.asigLista.length){ h = '<p class="empty">No hay paquetes escaneados</p>'; }
-  else {
-    S.asigLista.forEach((item, i) => {
-      const color = item.estado==='sobrante' ? 'var(--red)' : item.estado==='reasignar' ? 'var(--amb)' : 'var(--grn)';
-      h += `<div class="card" style="border-left:3px solid ${color}">
+  setBar(`Lista (${S.asigLista.length})`,S.asigMensNombre);
+  let h='';
+  if(!S.asigLista.length){h='<p class="empty">No hay paquetes escaneados</p>';}
+  else{
+    const colorEst={sobrante:'var(--red)',reasignar:'var(--amb)',disponible:'var(--grn)'};
+    S.asigLista.forEach((item,i)=>{
+      const clr=colorEst[item.estado]||'var(--tx2)';
+      h+=`<div class="card" style="border-left:3px solid ${clr}">
         <div class="card-row">
-          <div style="flex:1">
-            <div class="ct" style="font-family:var(--mo)">${esc(item.guia)}</div>
-            <div class="cs">${esc(item.zona)} · ${esc(item.estado)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600">${esc(item.guia)}</div>
+            <div class="cs">${esc(item.zona)} · ${esc(item.contCodigo||'—')} · ${esc(item.estado)}</div>
           </div>
           <button class="btn btn-o btn-s" onclick="S.asigLista.splice(${i},1);pgAsignarLista()">✕</button>
         </div>
       </div>`;
     });
   }
-  h += `<div style="display:flex;gap:8px;margin-top:12px">
+  h+=`<div style="display:flex;gap:8px;margin-top:12px">
     <button class="btn btn-o" style="flex:1" onclick="goBack()">← Escanear más</button>
     <button class="btn btn-g" style="flex:1" onclick="confirmarAsignacion()">Confirmar ✓</button>
   </div>`;
   setP(h);
 }
 
-let _confirmando = false;
-
+let _confirmando=false;
 async function confirmarAsignacion(){
-  if(!S.asigLista.length){ toast('No hay paquetes','er'); return; }
-  if(_confirmando) return;
-  _confirmando = true;
-
-  document.querySelectorAll('button').forEach(b => b.disabled = true);
-
-  const total = S.asigLista.length;
-  const esSinAsignar = S.asigMensId === 'SIN_ASIGNAR';
-  const nuevoEstado = esSinAsignar ? 'verificado' : 'asignado';
-
-  setP(`
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
-      <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
-      <div style="font-size:var(--fsm);font-weight:600" id="confirmMsg">Guardando...</div>
-      <div style="font-size:var(--fss);color:var(--tx2)" id="confirmSub">0 de ${total} paquetes</div>
-      <div style="width:200px">
-        <div class="progress"><div class="progress-bar" id="confirmBar" style="width:0%"></div></div>
-      </div>
-    </div>
-  `);
-
-  let ok = 0, errs = 0;
-
-  for(let i = 0; i < S.asigLista.length; i++){
-    const item = S.asigLista[i];
-    const pct = Math.round(100 * i / total);
-    const barEl = document.getElementById('confirmBar');
-    const subEl = document.getElementById('confirmSub');
-    if(barEl) barEl.style.width = pct + '%';
-    if(subEl) subEl.textContent = `${i} de ${total} paquetes`;
-
+  if(!S.asigLista.length){toast('No hay paquetes','er');return;}
+  if(_confirmando)return;
+  _confirmando=true;
+  document.querySelectorAll('button').forEach(b=>b.disabled=true);
+  const total=S.asigLista.length;
+  const esSinAsignar=S.asigMensId==='SIN_ASIGNAR';
+  const nuevoEstado=esSinAsignar?'verificado':'asignado';
+  setP(`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
+    <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
+    <div style="font-size:var(--fsm);font-weight:600" id="confirmMsg">Guardando...</div>
+    <div style="font-size:var(--fss);color:var(--tx2)" id="confirmSub">0 de ${total}</div>
+    <div style="width:200px"><div class="progress"><div class="progress-bar" id="confirmBar" style="width:0%"></div></div></div>
+  </div>`);
+  let ok=0,errs=0;
+  for(let i=0;i<S.asigLista.length;i++){
+    const item=S.asigLista[i];
+    const b=document.getElementById('confirmBar');const s=document.getElementById('confirmSub');
+    if(b)b.style.width=Math.round(100*i/total)+'%';
+    if(s)s.textContent=`${i} de ${total}`;
     try{
-      if(item.estado === 'sobrante'){
-        await sb.from('paquetes').insert({
-          num_guia: item.guia,
-          contenedor_id: S.cont,
-          destinatario: 'SOBRANTE',
-          direccion_original: 'Sobrante escaneado',
-          estado: nuevoEstado,
-          mensajero_id: esSinAsignar ? null : S.asigMensId,
-          created_by: S.user.id
-        });
+      if(item.estado==='sobrante'){
+        const{data:nuevoPaq}=await sb.from('paquetes').insert({
+          num_guia:item.guia,contenedor_id:null,
+          destinatario:'SOBRANTE',direccion_original:'Sobrante escaneado',
+          estado:nuevoEstado,mensajero_id:esSinAsignar?null:S.asigMensId,
+          created_by:S.user.id
+        }).select().single();
+        if(nuevoPaq){
+          await sb.from('historial_paquetes').insert({
+            paquete_id:nuevoPaq.id,accion:'marcado_sobrante',
+            estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,
+            realizado_por:S.user.id
+          });
+        }
       } else {
         await sb.from('paquetes').update({
-          estado: nuevoEstado,
-          mensajero_id: esSinAsignar ? null : S.asigMensId,
-          updated_by: S.user.id
-        }).eq('num_guia', item.guia);
-      }
-      if(item.paqId){
+          estado:nuevoEstado,
+          mensajero_id:esSinAsignar?null:S.asigMensId,
+          updated_by:S.user.id
+        }).eq('id',item.paqId);
         await sb.from('historial_paquetes').insert({
-          paquete_id: item.paqId,
-          accion: item.estado === 'reasignar' ? 'reasignado' : 'asignado',
-          estado_nuevo: nuevoEstado,
-          mensajero_nuevo: esSinAsignar ? null : S.asigMensId,
-          realizado_por: S.user.id
+          paquete_id:item.paqId,
+          accion:item.estado==='reasignar'?'reasignado':'asignado',
+          estado_nuevo:nuevoEstado,
+          mensajero_nuevo:esSinAsignar?null:S.asigMensId,
+          realizado_por:S.user.id
         });
       }
       ok++;
-    }catch(e){ errs++; }
+    }catch(e){errs++;}
   }
-
-  const barEl = document.getElementById('confirmBar');
-  const msgEl = document.getElementById('confirmMsg');
-  const subEl = document.getElementById('confirmSub');
-  if(barEl){ barEl.style.width='100%'; barEl.style.background = errs ? 'var(--amb)' : 'var(--grn)'; }
-  if(msgEl) msgEl.textContent = errs ? `Completado con ${errs} errores` : '¡Listo!';
-  if(subEl) subEl.textContent = `${ok} paquetes guardados${errs ? `, ${errs} errores` : ''}`;
-
-  beep(errs ? 'wa' : 'ok');
-  await new Promise(r => setTimeout(r, 800));
-
-  _confirmando = false;
-  S.asigLista = [];
-  toast(`${ok} asignados ✓${errs ? `, ${errs} errores` : ''}`, errs ? 'wa' : 'ok');
+  const b=document.getElementById('confirmBar');const m=document.getElementById('confirmMsg');const s=document.getElementById('confirmSub');
+  if(b){b.style.width='100%';b.style.background=errs?'var(--amb)':'var(--grn)';}
+  if(m)m.textContent=errs?`Completado con ${errs} errores`:'¡Listo!';
+  if(s)s.textContent=`${ok} paquetes guardados`;
+  beep(errs?'wa':'ok');
+  await new Promise(r=>setTimeout(r,800));
+  _confirmando=false;
+  S.asigLista=[];
+  toast(`${ok} asignados ✓${errs?`, ${errs} errores`:''}`,errs?'wa':'ok');
   go('asignar');
 }
 
@@ -836,122 +886,102 @@ async function confirmarAsignacion(){
 function pgBuscar(){
   setBar('Buscar guía','');
   setP(`
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <input class="inp" id="buscarInput" placeholder="Número de guía..."
-        onkeydown="if(event.key==='Enter')doSearch()" style="flex:1">
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input class="inp" id="buscarInput" placeholder="Número de guía..." style="flex:1"
+        onkeydown="if(event.key==='Enter')doSearch()">
       <button class="btn btn-p btn-s" onclick="doSearch()">Buscar</button>
     </div>
-    <div style="margin-bottom:14px">
-      <button class="btn btn-o btn-w btn-s" onclick="toggleBuscarScan()">📷 Escanear con cámara</button>
+    <button class="btn btn-o btn-w btn-s" id="btnCamara" onclick="toggleBuscarScan()">📷 Escanear con cámara</button>
+    <div id="buscarScanArea" style="display:none;margin:10px 0">
+      <div class="scan-area"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
     </div>
-    <div id="buscarScanArea" style="display:none;margin-bottom:14px">
-      <div class="scan-area" id="scanArea"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
-    </div>
-    <div id="buscarResult"></div>
+    <div id="buscarResult" style="margin-top:12px"></div>
   `);
 }
-
-let _buscarScanOn = false;
+let _buscarScanOn=false;
 function toggleBuscarScan(){
-  _buscarScanOn = !_buscarScanOn;
-  document.getElementById('buscarScanArea').style.display = _buscarScanOn ? 'block' : 'none';
-  if(_buscarScanOn) initScan(g => { stopScan(); _buscarScanOn=false; document.getElementById('buscarScanArea').style.display='none'; document.getElementById('buscarInput').value=g; doSearch(); });
+  _buscarScanOn=!_buscarScanOn;
+  document.getElementById('buscarScanArea').style.display=_buscarScanOn?'block':'none';
+  document.getElementById('btnCamara').textContent=_buscarScanOn?'✕ Cerrar cámara':'📷 Escanear con cámara';
+  if(_buscarScanOn) initScan(g=>{stopScan();_buscarScanOn=false;document.getElementById('buscarScanArea').style.display='none';document.getElementById('btnCamara').textContent='📷 Escanear con cámara';document.getElementById('buscarInput').value=g;doSearch();});
   else stopScan();
 }
-
 async function doSearch(){
-  const guia = cleanGuia(document.getElementById('buscarInput').value);
-  if(!guia){ toast('Ingresa una guía','er'); return; }
-  const res = document.getElementById('buscarResult');
-  res.innerHTML = loader();
-
+  const raw=document.getElementById('buscarInput')?.value;
+  const guia=cleanGuia(raw);
+  if(!guia){toast('Ingresa una guía','er');return;}
+  const res=document.getElementById('buscarResult');
+  res.innerHTML=loader();
   try{
-    const { data: paq } = await sb.from('paquetes')
-      .select('*, zonas(nombre), contenedores(codigo)')
-      .eq('num_guia', guia)
-      .single();
-
-    if(!paq){ res.innerHTML = '<p class="empty">Guía no encontrada</p>'; return; }
-
-    // Get mensajero name
-    let mensName = '—';
+    const{data:paq}=await sb.from('paquetes')
+      .select('*,zonas(nombre),contenedores(codigo)')
+      .eq('num_guia',guia).maybeSingle();
+    if(!paq){res.innerHTML='<p class="empty">Guía no encontrada</p>';return;}
+    let mensName='—';
     if(paq.mensajero_id){
-      const { data: prof } = await sb.from('profiles').select('nombre_completo').eq('id', paq.mensajero_id).single();
-      mensName = prof?.nombre_completo || '—';
+      const{data:prof}=await sb.from('profiles').select('nombre_completo').eq('id',paq.mensajero_id).single();
+      mensName=prof?.nombre_completo||'—';
     }
-
-    // Get history
-    const { data: hist } = await sb.from('historial_paquetes')
-      .select('accion, estado_nuevo, realizado_en, nota, profiles!realizado_por(nombre_completo)')
-      .eq('paquete_id', paq.id)
-      .order('realizado_en', { ascending: false })
-      .limit(10);
-
-    const stColor = {pendiente:'b-am', verificado:'b-bl', asignado:'b-pu', en_ruta:'b-gr', entregado:'b-gr', devuelto:'b-rd', sobrante:'b-rd', fuera_zona:'b-gy'};
-
-    let h = `<div class="card" style="cursor:default">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-family:var(--mo);font-weight:600">${esc(guia)}</span>
+    const{data:hist}=await sb.from('historial_paquetes')
+      .select('accion,estado_nuevo,realizado_en,nota,profiles!realizado_por(nombre_completo)')
+      .eq('paquete_id',paq.id).order('realizado_en',{ascending:false}).limit(8);
+    let h=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-family:var(--mo);font-weight:600;color:var(--acc)">${esc(guia)}</span>
         <span class="b ${stColor[paq.estado]||'b-gy'}">${esc(paq.estado)}</span>
       </div>
-      <div style="font-size:var(--fss);color:var(--tx2);line-height:1.7">
+      <div style="font-size:var(--fss);color:var(--tx2);line-height:1.8">
         <div>👤 ${esc(paq.destinatario)}</div>
         <div>📍 ${esc(paq.direccion_original)}</div>
-        ${paq.telefono ? `<div>📞 ${esc(paq.telefono)}</div>` : ''}
-        <div>🗂 Zona: <span class="zona-tag" style="background:rgba(59,130,246,.12);color:var(--acc)">${esc(paq.zonas?.nombre||'Sin zona')}</span></div>
-        <div>👷 Mensajero: ${esc(mensName)}</div>
-        <div>📦 Contenedor: ${esc(paq.contenedores?.codigo||'—')}</div>
-        ${paq.intentos_entrega ? `<div>🔄 Intentos: ${paq.intentos_entrega}</div>` : ''}
+        ${paq.telefono?`<div>📞 ${esc(paq.telefono)}</div>`:''}
+        <div>🗂 <span style="font-family:var(--mo);color:var(--acc)">${esc(paq.zonas?.nombre||'Sin zona')}</span></div>
+        <div>👷 ${esc(mensName)}</div>
+        <div>📦 ${esc(paq.contenedores?.codigo||'—')}</div>
+        ${paq.intentos_entrega?`<div>🔄 Intentos: ${paq.intentos_entrega}</div>`:''}
       </div>
     </div>`;
-
-    // Actions
-    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">';
-    if(['pendiente','verificado','asignado'].includes(paq.estado)){
-      h += `<button class="btn btn-d btn-s" onclick="confDevolver('${guia}','${paq.id}')">Devolver a bodega</button>`;
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">';
+    if(['pendiente','verificado','asignado','en_ruta'].includes(paq.estado)){
+      h+=`<button class="btn btn-d btn-s" onclick="confDevolver('${guia}','${paq.id}')">Devolver a bodega</button>`;
     }
-    if(paq.mensajero_id && ['asignado','en_ruta','verificado'].includes(paq.estado)){
-      h += `<button class="btn btn-o btn-s" onclick="confDesasignar('${guia}','${paq.id}')">Quitar asignación</button>`;
+    if(paq.mensajero_id&&['asignado','en_ruta','verificado'].includes(paq.estado)){
+      h+=`<button class="btn btn-o btn-s" onclick="confDesasignar('${guia}','${paq.id}')">Quitar asignación</button>`;
     }
-    if(paq.estado === 'en_ruta'){
-      h += `<button class="btn btn-g btn-s" onclick="confEntregado('${guia}','${paq.id}')">Marcar entregado ✓</button>`;
+    if(paq.estado==='en_ruta'){
+      h+=`<button class="btn btn-g btn-s" onclick="confEntregado('${guia}','${paq.id}')">Marcar entregado ✓</button>`;
     }
-    h += '</div>';
-
-    // History
-    if(hist && hist.length){
-      h += '<h3 style="font-size:var(--fsm);color:var(--tx2);margin-bottom:8px">Historial</h3>';
-      hist.forEach(ev => {
-        const who = ev.profiles?.nombre_completo || '—';
-        const when = new Date(ev.realizado_en).toLocaleString('es-CO', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
-        h += `<div style="font-size:var(--fss);color:var(--tx3);padding:4px 0;border-bottom:1px solid var(--brd)">
-          <span style="color:var(--tx2)">${esc(ev.accion)}</span> → ${esc(ev.estado_nuevo||'')} · ${who} · ${when}
-          ${ev.nota ? `<div style="color:var(--tx3)">${esc(ev.nota)}</div>` : ''}
+    h+='</div>';
+    if(hist&&hist.length){
+      h+='<div class="section-title">Historial</div>';
+      hist.forEach(ev=>{
+        const who=ev.profiles?.nombre_completo||'—';
+        const when=new Date(ev.realizado_en).toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+        h+=`<div style="font-size:var(--fss);color:var(--tx3);padding:5px 0;border-bottom:1px solid var(--brd)">
+          <span style="color:var(--tx2);font-weight:500">${esc(ev.accion)}</span>
+          ${ev.estado_nuevo?` → ${esc(ev.estado_nuevo)}`:''}
+          <span style="float:right">${fmtTime(ev.realizado_en)}</span><br>
+          <span style="color:var(--tx3)">${who} · ${when.split(',')[0]}</span>
+          ${ev.nota?`<div style="color:var(--tx3);margin-top:1px">${esc(ev.nota)}</div>`:''}
         </div>`;
       });
     }
-    res.innerHTML = h;
-  }catch(e){
-    res.innerHTML = `<p style="color:var(--red)">${esc(e.message)}</p>`;
-  }
+    res.innerHTML=h;
+  }catch(e){res.innerHTML=`<p style="color:var(--red)">${esc(e.message)}</p>`;}
 }
-
-function confDesasignar(guia, paqId){
-  dialog('Quitar asignación', '¿Desasignar este paquete?', guia, [
+function confDesasignar(guia,paqId){
+  dialog('Quitar asignación','¿Desasignar este paquete?',guia,[
     {l:'Cancelar',fn:closeDlg},
     {l:'Desasignar',c:'btn-d',fn:async()=>{
       closeDlg();
-      await sb.from('paquetes').update({ mensajero_id:null, estado:'verificado', updated_by:S.user.id }).eq('id', paqId);
-      await sb.from('historial_paquetes').insert({ paquete_id:paqId, accion:'desasignado', estado_nuevo:'verificado', realizado_por:S.user.id });
-      toast('Desasignado ✓','ok'); doSearch();
+      await sb.from('paquetes').update({mensajero_id:null,estado:'verificado',updated_by:S.user.id}).eq('id',paqId);
+      await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'desasignado',estado_nuevo:'verificado',realizado_por:S.user.id});
+      toast('Desasignado ✓','ok');doSearch();
     }}
   ]);
 }
-
-function confDevolver(guia, paqId){
-  dialog('Devolver a bodega', 'Selecciona el motivo:', guia, []);
-  const dlgM = document.getElementById('dlgM');
-  dlgM.innerHTML = `
+function confDevolver(guia,paqId){
+  dialog('Devolver a bodega','',guia,[]);
+  document.getElementById('dlgM').innerHTML=`
     <select class="inp sel" id="devMotivo" style="margin-bottom:8px">
       <option value="destinatario_ausente">Destinatario ausente</option>
       <option value="direccion_errada">Dirección errada</option>
@@ -962,240 +992,100 @@ function confDevolver(guia, paqId){
     </select>
     <input class="inp" id="devNota" placeholder="Nota opcional...">
   `;
-  const dlgA = document.getElementById('dlgA');
-  dlgA.innerHTML = '';
-  const btnC = document.createElement('button'); btnC.className='btn btn-o btn-s'; btnC.textContent='Cancelar'; btnC.onclick=closeDlg;
-  const btnD = document.createElement('button'); btnD.className='btn btn-d btn-s'; btnD.textContent='Devolver';
-  btnD.onclick = async()=>{
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  const bc=document.createElement('button');bc.className='btn btn-o btn-s';bc.textContent='Cancelar';bc.onclick=closeDlg;
+  const bd=document.createElement('button');bd.className='btn btn-d btn-s';bd.textContent='Devolver';
+  bd.onclick=async()=>{
     closeDlg();
-    const motivo = document.getElementById('devMotivo').value;
-    const nota = document.getElementById('devNota')?.value || '';
-    // Get current intentos
-    const { data:p } = await sb.from('paquetes').select('intentos_entrega').eq('id', paqId).single();
-    const intentos = (p?.intentos_entrega || 0) + 1;
-    await sb.from('paquetes').update({
-      estado:'devuelto', mensajero_id:null, intentos_entrega:intentos,
-      motivo_ult_devolucion:motivo, detalle_devolucion:nota, updated_by:S.user.id
-    }).eq('id', paqId);
-    await sb.from('historial_paquetes').insert({
-      paquete_id:paqId, accion:'devuelto_bodega', estado_nuevo:'devuelto',
-      motivo:motivo, nota:nota, realizado_por:S.user.id
-    });
-    toast(`Devuelto a bodega (intento ${intentos}) ✓`,'ok'); doSearch();
+    const motivo=document.getElementById('devMotivo').value;
+    const nota=document.getElementById('devNota')?.value||'';
+    const{data:p}=await sb.from('paquetes').select('intentos_entrega').eq('id',paqId).single();
+    const intentos=(p?.intentos_entrega||0)+1;
+    await sb.from('paquetes').update({estado:'devuelto',mensajero_id:null,intentos_entrega:intentos,motivo_ult_devolucion:motivo,detalle_devolucion:nota,updated_by:S.user.id}).eq('id',paqId);
+    await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'devuelto_bodega',estado_nuevo:'devuelto',motivo:motivo,nota:nota,realizado_por:S.user.id});
+    toast(`Devuelto (intento ${intentos}) ✓`,'ok');doSearch();
   };
-  dlgA.appendChild(btnC); dlgA.appendChild(btnD);
+  aEl.appendChild(bc);aEl.appendChild(bd);
 }
-
-function confEntregado(guia, paqId){
-  dialog('Confirmar entrega', '¿Marcar como entregado?', guia, [
+function confEntregado(guia,paqId){
+  dialog('Confirmar entrega','¿Marcar como entregado?',guia,[
     {l:'Cancelar',fn:closeDlg},
     {l:'Entregado ✓',c:'btn-g',fn:async()=>{
       closeDlg();
-      await sb.from('paquetes').update({ estado:'entregado', updated_by:S.user.id }).eq('id', paqId);
-      await sb.from('historial_paquetes').insert({ paquete_id:paqId, accion:'entregado', estado_nuevo:'entregado', realizado_por:S.user.id });
-      toast('Entregado ✓','ok'); doSearch();
+      await sb.from('paquetes').update({estado:'entregado',updated_by:S.user.id}).eq('id',paqId);
+      await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'entregado',estado_nuevo:'entregado',realizado_por:S.user.id});
+      toast('Entregado ✓','ok');doSearch();
     }}
   ]);
 }
 
 // ══════════════════════════════════════════════════════════════════
-// AUDITORÍA
+// SCANNER
 // ══════════════════════════════════════════════════════════════════
-async function pgAudit(){
-  setBar('Auditoría','');
-  if(!S.contenedores.length){
-    const { data } = await sb.from('contenedores').select('*').order('created_at',{ascending:false}).limit(20);
-    S.contenedores = data || [];
-  }
-  let h = '<h3 style="font-size:var(--fsm);color:var(--tx2);margin-bottom:8px">Selecciona un contenedor</h3>';
-  S.contenedores.forEach(c => {
-    h += `<div class="card" onclick="S.cont='${c.id}';go('audit-cont')">
-      <div class="card-row">
-        <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">📋</div>
-        <div style="flex:1;min-width:0">
-          <div class="ct">${esc(c.codigo)}</div>
-          <div class="cs">${fmtDate(c.fecha_recepcion)} · ${c.total_paquetes||0} paquetes</div>
-        </div>
-      </div>
-    </div>`;
-  });
-  setP(h);
-}
-
-async function pgAuditCont(){
-  if(!S.cont){ go('audit'); return; }
-  setP(loader());
-  const { data: cont } = await sb.from('contenedores').select('*').eq('id', S.cont).single();
-  setBar('Auditoría', cont?.codigo||'');
-
-  // Get paquetes with zona and mensajero
-  const { data: paq } = await sb.from('paquetes')
-    .select('estado, zona_id, mensajero_id, zonas(nombre), profiles!mensajero_id(nombre_completo)')
-    .eq('contenedor_id', S.cont);
-
-  if(!paq || !paq.length){ setP('<p class="empty">Sin paquetes</p>'); return; }
-
-  // Stats
-  const total = paq.length;
-  const byEstado = {};
-  paq.forEach(p => { byEstado[p.estado] = (byEstado[p.estado]||0)+1; });
-
-  // By zona
-  const byZona = {};
-  paq.forEach(p => {
-    const z = p.zonas?.nombre || 'Sin zona';
-    if(!byZona[z]) byZona[z] = {total:0, asignados:0, pendientes:0};
-    byZona[z].total++;
-    if(['asignado','en_ruta'].includes(p.estado)) byZona[z].asignados++;
-    else if(['pendiente','verificado'].includes(p.estado)) byZona[z].pendientes++;
-  });
-
-  // By mensajero
-  const byMens = {};
-  paq.forEach(p => {
-    if(!p.mensajero_id) return;
-    if(!['asignado','en_ruta','verificado'].includes(p.estado)) return;
-    const name = p.profiles?.nombre_completo || 'Sin nombre';
-    byMens[name] = (byMens[name]||0)+1;
-  });
-
-  let h = `
-    <div class="stat-row">
-      <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Total</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--grn)">${byEstado.entregado||0}</div><div class="stat-l">Entregados</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--acc)">${byEstado.asignado||0}</div><div class="stat-l">Asignados</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--amb)">${byEstado.pendiente||0}</div><div class="stat-l">Pendientes</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--red)">${byEstado.devuelto||0}</div><div class="stat-l">Devueltos</div></div>
-    </div>
-  `;
-
-  // Zonas table
-  h += '<h3 style="font-size:var(--fsm);color:var(--tx2);margin:12px 0 6px">Por zona</h3>';
-  h += '<table class="tbl"><tr><th>Zona</th><th>Total</th><th>Asig</th><th>Pend</th></tr>';
-  Object.entries(byZona).sort((a,b) => b[1].total - a[1].total).forEach(([z,v]) => {
-    h += `<tr><td><span class="zona-tag" style="background:rgba(59,130,246,.12);color:var(--acc)">${esc(z)}</span></td><td>${v.total}</td><td>${v.asignados}</td><td>${v.pendientes}</td></tr>`;
-  });
-  h += '</table>';
-
-  // Mensajeros table
-  if(Object.keys(byMens).length){
-    h += '<h3 style="font-size:var(--fsm);color:var(--tx2);margin:14px 0 6px">Por mensajero</h3>';
-    h += '<table class="tbl"><tr><th>Mensajero</th><th>Paquetes</th></tr>';
-    Object.entries(byMens).sort((a,b) => b[1] - a[1]).forEach(([m,c]) => {
-      h += `<tr><td>${esc(m)}</td><td>${c}</td></tr>`;
-    });
-    h += '</table>';
-  }
-  setP(h);
-}
-
-// ══════════════════════════════════════════════════════════════════
-// SCANNER (Camera / BarcodeDetector)
-// ══════════════════════════════════════════════════════════════════
-// Control de cooldown: evita re-escanear el mismo código 60 veces/seg
-let _scanLastCode = null;      // última guía leída
-let _scanLastTime = 0;         // timestamp del último scan exitoso
-const SCAN_COOLDOWN_MS = 1500; // espera mínima entre lecturas (ms)
-let _scanLocked = false;       // bloqueo mientras procesa async
+let _scanLastCode=null,_scanLastTime=0,_scanLocked=false;
+const SCAN_COOLDOWN_MS=1500;
 
 async function initScan(callback){
-  S.scanCb = callback;
-  _scanLastCode = null;
-  _scanLastTime = 0;
-  _scanLocked = false;
-
+  S.scanCb=callback;_scanLastCode=null;_scanLastTime=0;_scanLocked=false;
   try{
-    const vid = document.getElementById('scanVid');
-    if(!vid) return;
-    S.scanStream = await navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:'environment', width:{ideal:640}, height:{ideal:480} }
-    });
-    vid.srcObject = S.scanStream;
-    await vid.play();
-
+    const vid=document.getElementById('scanVid');
+    if(!vid)return;
+    S.scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}}});
+    vid.srcObject=S.scanStream;await vid.play();
     if('BarcodeDetector' in window){
-      const det = new BarcodeDetector({ formats:['code_128','ean_13','ean_8','code_39'] });
-
-      const loop = async()=>{
-        if(!S.scanStream) return;
-
-        const now = Date.now();
-        // Solo intentar leer si: no está bloqueado Y pasó el cooldown
-        if(!_scanLocked && (now - _scanLastTime) >= SCAN_COOLDOWN_MS){
+      const det=new BarcodeDetector({formats:['code_128','ean_13','ean_8','code_39']});
+      const loop=async()=>{
+        if(!S.scanStream)return;
+        const now=Date.now();
+        if(!_scanLocked&&(now-_scanLastTime)>=SCAN_COOLDOWN_MS){
           try{
-            const codes = await det.detect(vid);
+            const codes=await det.detect(vid);
             if(codes.length){
-              const raw = codes[0].rawValue;
-              const g = cleanGuia(raw);
-              if(g){
-                // Ignorar si es el mismo código que se acaba de leer
-                if(g !== _scanLastCode || (now - _scanLastTime) >= SCAN_COOLDOWN_MS * 2){
-                  _scanLastCode = g;
-                  _scanLastTime = now;
-                  _scanLocked = true;
-
-                  // Feedback visual: pausar la línea de escaneo
-                  const line = document.querySelector('.scan-line');
-                  if(line){ line.style.background='var(--grn)'; line.style.boxShadow='0 0 8px var(--grn)'; }
-
-                  if(S.scanCb) await S.scanCb(g);
-
-                  // Restaurar visual y desbloquear
-                  setTimeout(()=>{
-                    const l = document.querySelector('.scan-line');
-                    if(l){ l.style.background='var(--red)'; l.style.boxShadow='0 0 8px var(--red)'; }
-                    _scanLocked = false;
-                  }, SCAN_COOLDOWN_MS);
-                }
+              const g=cleanGuia(codes[0].rawValue);
+              if(g&&(g!==_scanLastCode||(now-_scanLastTime)>=SCAN_COOLDOWN_MS*2)){
+                _scanLastCode=g;_scanLastTime=now;_scanLocked=true;
+                const line=document.querySelector('.scan-line');
+                if(line){line.style.background='var(--grn)';line.style.boxShadow='0 0 8px var(--grn)';}
+                if(S.scanCb)await S.scanCb(g);
+                setTimeout(()=>{
+                  const l=document.querySelector('.scan-line');
+                  if(l){l.style.background='var(--red)';l.style.boxShadow='0 0 8px var(--red)';}
+                  _scanLocked=false;
+                },SCAN_COOLDOWN_MS);
               }
             }
           }catch(e){}
         }
-
-        if(S.scanStream) setTimeout(()=>requestAnimationFrame(loop), 100);
+        if(S.scanStream)setTimeout(()=>requestAnimationFrame(loop),100);
       };
-
       requestAnimationFrame(loop);
     } else {
-      // BarcodeDetector no disponible en este navegador
-      const area = document.getElementById('scanArea');
-      if(area){
-        area.innerHTML += '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:8px;text-align:center;font-size:var(--fss);color:var(--amb)">Escáner automático no disponible — usa el campo de texto</div>';
-      }
+      const area=document.getElementById('scanArea');
+      if(area)area.innerHTML+='<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:8px;text-align:center;font-size:var(--fss);color:var(--amb)">Usa el campo de texto</div>';
     }
   }catch(e){
-    console.warn('Camera error:', e);
-    const area = document.getElementById('scanArea');
-    if(area) area.innerHTML = '<div style="padding:20px;text-align:center;color:var(--tx3)">Cámara no disponible.<br>Usa el campo de texto.</div>';
+    const area=document.getElementById('scanArea');
+    if(area)area.innerHTML='<div style="padding:20px;text-align:center;color:var(--tx3)">Cámara no disponible.<br>Usa el campo de texto.</div>';
   }
 }
-
 function stopScan(){
-  if(S.scanStream){ S.scanStream.getTracks().forEach(t=>t.stop()); S.scanStream=null; }
-  S.scanCb = null;
-  _scanLastCode = null;
-  _scanLocked = false;
+  if(S.scanStream){S.scanStream.getTracks().forEach(t=>t.stop());S.scanStream=null;}
+  S.scanCb=null;_scanLastCode=null;_scanLocked=false;
 }
 
 // ══════════════════════════════════════════════════════════════════
-// INIT — Check auth state
+// INIT
 // ══════════════════════════════════════════════════════════════════
 async function init(){
-  const { data: { session } } = await sb.auth.getSession();
+  const{data:{session}}=await sb.auth.getSession();
   if(session){
-    S.user = session.user;
-    const { data: prof } = await sb.from('profiles').select('*').eq('id', session.user.id).single();
-    S.profile = prof;
-    if(prof && prof.activo){
-      document.getElementById('mainNav').style.display='flex';
-      go('home', false);
-      return;
-    }
+    S.user=session.user;
+    const{data:prof}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
+    S.profile=prof;
+    if(prof&&prof.activo){document.getElementById('mainNav').style.display='flex';go('home',false);return;}
   }
-  document.getElementById('mainNav').style.display='none';
-  go('login', false);
+  go('login',false);
 }
-
 init();
 </script>
 </body>
