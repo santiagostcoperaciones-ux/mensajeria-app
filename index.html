@@ -190,6 +190,7 @@ async function go(page,push=true){
       case 'asignar-lista': pgAsignarLista();break;
       case 'buscar':        pgBuscar();break;
       case 'mensajeros':    await pgMensajeros();break;
+      case 'mens-gestionar':await pgMensGestionar();break;
       case 'mens-historial':await pgMensHistorial();break;
       case 'mens-paquetes': await pgMensPaquetes();break;
       default:              await pgHome();
@@ -521,7 +522,7 @@ async function pgContDetalle(){
   setP(loader());
 
   const{data:paq}=await sb.from('paquetes')
-    .select('id,num_guia,estado,zona_id,mensajero_id,zonas(nombre),profiles!mensajero_id(nombre_completo)')
+    .select('id,num_guia,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
     .eq('contenedor_id',contId);
 
   if(!paq?.length){setP('<p class="empty">Sin paquetes</p>');return;}
@@ -546,11 +547,11 @@ async function pgContDetalle(){
   // Por mensajero
   const byMens={};
   paq.forEach(p=>{
-    if(!p.mensajero_id)return;
+    const mId=p.mensajero_simple_id||p.mensajero_id;
+    if(!mId)return;
     if(!['asignado','en_ruta','verificado','entregado','devuelto'].includes(p.estado))return;
-    const mId=p.mensajero_id;
-    const mNombre=p.profiles?.nombre_completo||'Sin nombre';
-    if(!byMens[mId])byMens[mId]={id:mId,nombre:mNombre,total:0,entr:0,dev:0,pend:0};
+    const mNombre=p.mensajeros_data?.nombre_completo||p.profiles?.nombre_completo||'Sin nombre';
+    if(!byMens[mId])byMens[mId]={id:mId,nombre:mNombre,tipo:p.mensajero_simple_id?'mensajero':'profile',total:0,entr:0,dev:0,pend:0};
     byMens[mId].total++;
     if(p.estado==='entregado')byMens[mId].entr++;
     else if(p.estado==='devuelto')byMens[mId].dev++;
@@ -626,10 +627,11 @@ async function pgContMensajero(){
   setBar(mensNombre,S._contCodigo||'');
   setP(loader());
 
+  // Buscar por mensajero_simple_id O mensajero_id según lo que tenga
   const{data:paq}=await sb.from('paquetes')
     .select('num_guia,destinatario,direccion_original,estado,zonas(nombre)')
     .eq('contenedor_id',contId)
-    .eq('mensajero_id',mensId)
+    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`)
     .order('estado');
 
   if(!paq?.length){setP('<p class="empty">Sin paquetes</p>');return;}
@@ -793,16 +795,24 @@ async function doImport(){
 async function pgAsignar(){
   setBar('Asignar paquetes','');
   setP(loader());
-  const{data:mens}=await sb.from('profiles').select('id,nombre_completo')
-    .eq('activo',true).in('rol',['mensajero','admin','operador']).order('nombre_completo');
-  S.mensajeros=mens||[];
+  // Cargar mensajeros (tabla mensajeros) + admins/operadores (profiles)
+  const [{data:mensList},{data:adminList}] = await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo,zona_principal').eq('activo',true).order('nombre_completo'),
+    sb.from('profiles').select('id,nombre_completo').eq('activo',true).in('rol',['admin','operador']).order('nombre_completo'),
+  ]);
+  // Unificar: mensajeros tienen prefijo 'm:' en el id para distinguirlos
+  const todosLosAsignables = [
+    ...(mensList||[]).map(m=>({...m, tipo:'mensajero'})),
+    ...(adminList||[]).map(a=>({...a, tipo:'profile'})),
+  ];
+  S.mensajeros = todosLosAsignables;
   setP(`
     <div style="margin-bottom:14px">
       <label>Mensajero</label>
       <select class="inp sel" id="selMens">
         <option value="">— Seleccionar —</option>
         <option value="SIN_ASIGNAR">Sin asignar (bolsa)</option>
-        ${(mens||[]).map(m=>`<option value="${m.id}">${esc(m.nombre_completo)}</option>`).join('')}
+        ${(todosLosAsignables).map(m=>`<option value="${m.tipo}:${m.id}">${esc(m.nombre_completo)}${m.zona_principal?' ('+esc(m.zona_principal)+')':''}</option>`).join('')}
       </select>
     </div>
     <div id="bolsaWrap" style="display:none;margin-bottom:14px">
@@ -821,12 +831,18 @@ async function pgAsignar(){
   };
 }
 function iniciarAsignacion(){
-  const mensId=document.getElementById('selMens').value;
-  if(!mensId){toast('Selecciona un mensajero','er');return;}
-  S.asigMensId=mensId;
-  S.asigMensNombre=mensId==='SIN_ASIGNAR'
-    ?(document.getElementById('bolsaNombre')?.value?.trim()||'Bolsa')
-    :S.mensajeros.find(m=>m.id===mensId)?.nombre_completo||'Mensajero';
+  const val=document.getElementById('selMens').value;
+  if(!val){toast('Selecciona un mensajero','er');return;}
+  if(val==='SIN_ASIGNAR'){
+    S.asigMensId='SIN_ASIGNAR';
+    S.asigMensTipo='bolsa';
+    S.asigMensNombre=document.getElementById('bolsaNombre')?.value?.trim()||'Bolsa';
+  } else {
+    const [tipo,id]=val.split(':');
+    S.asigMensId=id;
+    S.asigMensTipo=tipo; // 'mensajero' o 'profile'
+    S.asigMensNombre=S.mensajeros.find(m=>m.id===id)?.nombre_completo||'Mensajero';
+  }
   S.asigLista=[];
   go('asignar-scan');
 }
@@ -862,14 +878,18 @@ async function onAsigCode(guia){
   }
   const zona=paq.zonas?.nombre||'Sin zona';
   const cont=paq.contenedores?.codigo||'—';
-  const yaEsMio=paq.mensajero_id===S.asigMensId&&['asignado','en_ruta','verificado'].includes(paq.estado);
-  const esDeOtro=paq.mensajero_id&&paq.mensajero_id!==S.asigMensId&&['asignado','en_ruta'].includes(paq.estado);
+  // Verificar si está asignado al mismo mensajero (sea simple o profile)
+  const yaEsMio=(S.asigMensTipo==='mensajero'&&paq.mensajero_simple_id===S.asigMensId
+               ||S.asigMensTipo==='profile'&&paq.mensajero_id===S.asigMensId)
+               &&['asignado','en_ruta','verificado'].includes(paq.estado);
+  const tieneOtro=(paq.mensajero_simple_id||paq.mensajero_id)&&!yaEsMio&&['asignado','en_ruta'].includes(paq.estado);
+  const esDeOtro=tieneOtro;
   if(yaEsMio){
     el.innerHTML=`<div class="scan-result" style="background:rgba(59,130,246,.1);color:var(--acc)">ℹ️ ${guia} — ya asignado a ti (${zona})</div>`+el.innerHTML;
     beep('wa');return;
   }
   if(esDeOtro){
-    const otro=paq.profiles?.nombre_completo||'otro mensajero';
+    const otro=paq.mensajeros_data?.nombre_completo||paq.profiles?.nombre_completo||'otro mensajero';
     beep('wa');
     dialog('Paquete ya asignado',`Está con ${otro}. ¿Reasignar a ${S.asigMensNombre}?`,guia,[
       {l:'No, dejar',fn:closeDlg},
@@ -945,8 +965,22 @@ async function confirmarAsignacion(){
           }).select().single();
           if(np)await sb.from('historial_paquetes').insert({paquete_id:np.id,accion:'marcado_sobrante',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
         }else{
-          await sb.from('paquetes').update({estado:nuevoEstado,mensajero_id:esSinAsignar?null:S.asigMensId,updated_by:S.user.id}).eq('id',item.paqId);
-          await sb.from('historial_paquetes').insert({paquete_id:item.paqId,accion:item.estado==='reasignar'?'reasignado':'asignado',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
+          const upd={estado:nuevoEstado,updated_by:S.user.id};
+          if(esSinAsignar){
+            upd.mensajero_simple_id=null; upd.mensajero_id=null;
+          } else if(S.asigMensTipo==='mensajero'){
+            upd.mensajero_simple_id=S.asigMensId; upd.mensajero_id=null;
+          } else {
+            upd.mensajero_id=S.asigMensId; upd.mensajero_simple_id=null;
+          }
+          await sb.from('paquetes').update(upd).eq('id',item.paqId);
+          await sb.from('historial_paquetes').insert({
+            paquete_id:item.paqId,
+            accion:item.estado==='reasignar'?'reasignado':'asignado',
+            estado_nuevo:nuevoEstado,
+            mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
+            realizado_por:S.user.id
+          });
         }
         ok++;
       }catch(e){errs++;}
@@ -985,24 +1019,220 @@ async function confirmarAsignacion(){
 // ══════════════════════════════════════════════════════════════════
 async function pgMensajeros(){
   setBar('Mensajeros','');
+  // Botón de gestión solo para admins
+  if(S.profile?.rol==='admin'){
+    document.getElementById('barRight').innerHTML=`<button class="btn btn-p btn-s" onclick="go('mens-gestionar')">+ Agregar</button>`;
+  }
   setP(loader());
-  const{data:mens}=await sb.from('profiles').select('id,nombre_completo,activo')
-    .in('rol',['mensajero','admin','operador']).order('nombre_completo');
-  if(!mens?.length){setP('<p class="empty">No hay mensajeros registrados</p>');return;}
+  const [{data:mensajerosList},{data:adminList2}] = await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo,telefono,activo,zona_principal').order('nombre_completo'),
+    sb.from('profiles').select('id,nombre_completo,telefono,activo,zona_principal,rol').in('rol',['admin','operador']).order('nombre_completo'),
+  ]);
+  const mens=[
+    ...(mensajerosList||[]).map(m=>({...m,rol:'mensajero',_tabla:'mensajeros'})),
+    ...(adminList2||[]).map(a=>({...a,_tabla:'profiles'})),
+  ];
+  if(!mens?.length){
+    setP(`<div style="text-align:center;padding:30px 14px">
+      <div style="font-size:36px;margin-bottom:12px">👥</div>
+      <p style="font-weight:600;margin-bottom:4px">No hay mensajeros registrados</p>
+      ${S.profile?.rol==='admin'?'<button class="btn btn-p" style="margin-top:12px" onclick="go('mens-gestionar')">+ Agregar mensajeros</button>':''}
+    </div>`);
+    return;
+  }
+  // Separar por rol
+  const mensajeros=mens.filter(m=>m.rol==='mensajero');
+  const admins=mens.filter(m=>m.rol!=='mensajero');
   let h='';
-  mens.forEach(m=>{
-    h+=`<div class="card" onclick="S._mensId='${m.id}';S._mensNombre='${esc(m.nombre_completo)}';go('mens-paquetes')">
-      <div class="card-row">
-        <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
-        <div style="flex:1;min-width:0">
-          <div class="ct">${esc(m.nombre_completo)}</div>
-          <div class="cs">${m.activo?'Activo':'Inactivo'}</div>
+  if(mensajeros.length){
+    h+=`<div class="sec-title">Mensajeros (${mensajeros.length})</div>`;
+    mensajeros.forEach(m=>{
+      h+=`<div class="card">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
+          <div style="flex:1;min-width:0" onclick="S._mensId='${m.id}';S._mensNombre='${esc(m.nombre_completo)}';go('mens-paquetes')" >
+            <div class="ct">${esc(m.nombre_completo)}</div>
+            <div class="cs">${m.telefono?'📞 '+esc(m.telefono):'Sin teléfono'}${m.zona_principal?' · '+esc(m.zona_principal):''}</div>
+          </div>
+          ${S.profile?.rol==='admin'?`<button class="btn btn-o btn-s" style="font-size:10px;padding:0 8px" onclick="toggleMensActivo('${m.id}','${esc(m.nombre_completo)}',${m.activo})">${m.activo?'✓ Activo':'✗ Inactivo'}</button>`:''}
         </div>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
-      </div>
-    </div>`;
-  });
+      </div>`;
+    });
+  }
+  if(admins.length){
+    h+=`<div class="sec-title" style="margin-top:8px">Admins / Operadores (${admins.length})</div>`;
+    admins.forEach(m=>{
+      h+=`<div class="card" onclick="S._mensId='${m.id}';S._mensNombre='${esc(m.nombre_completo)}';go('mens-paquetes')">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">🔑</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct">${esc(m.nombre_completo)}</div>
+            <div class="cs">${esc(m.rol)} · ${m.activo?'Activo':'Inactivo'}</div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>`;
+    });
+  }
   setP(h);
+}
+
+async function toggleMensActivo(id, nombre, activo){
+  const nuevoEstado = !activo;
+  dialog(
+    nuevoEstado ? 'Activar mensajero' : 'Desactivar mensajero',
+    `¿${nuevoEstado?'Activar':'Desactivar'} a ${nombre}?`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l: nuevoEstado?'Activar':'Desactivar', c: nuevoEstado?'btn-g':'btn-d', fn: async()=>{
+        closeDlg();
+        await sb.from('profiles').update({activo:nuevoEstado}).eq('id',id);
+        toast(`${nombre} ${nuevoEstado?'activado':'desactivado'}`,'ok');
+        pgMensajeros();
+      }}
+    ]
+  );
+}
+
+// ── Gestión de mensajeros (solo admin) ──
+async function pgMensGestionar(){
+  setBar('Agregar mensajeros','');
+  setP(`
+    <div style="margin-bottom:16px">
+      <div class="sec-title">Agregar uno a uno</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div><label>Nombre completo *</label><input class="inp" id="mNombre" placeholder="Juan Pérez"></div>
+        <div><label>Teléfono</label><input class="inp" id="mTel" placeholder="3001234567" type="tel"></div>
+        <div><label>Zona principal</label>
+          <select class="inp sel" id="mZona">
+            <option value="">— Sin zona específica —</option>
+            ${['ORIENTE_1','ORIENTE_2','ORIENTE_3','ORIENTE_4','ORIENTE_5','LOMA_1','LOMA_2','LOMA_3','NORTE','IMPERIAL','SUBAZAR','LISBOA','BILBAO','FONTANAR','RINCON','COSTA_AZUL','FLORES','GAITANA','GUAYMARAL'].map(z=>`<option value="${z}">${z}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-p btn-w" onclick="agregarMensajero()">+ Agregar mensajero</button>
+      </div>
+    </div>
+
+    <div class="sec-title">Cargar desde Excel</div>
+    <div class="file-drop" onclick="document.getElementById('mensFileInput').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="event.preventDefault();this.classList.remove('drag');handleMensFile(event.dataTransfer.files[0])">
+      <div style="font-size:28px;margin-bottom:6px">📋</div>
+      <p style="font-weight:600;font-size:var(--fsm);margin-bottom:2px">Selecciona el Excel</p>
+      <p style="font-size:var(--fss);color:var(--tx3)">Columnas: nombre_completo · telefono · zona_principal</p>
+    </div>
+    <input type="file" id="mensFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleMensFile(this.files[0])">
+
+    <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--r2);font-size:var(--fss);color:var(--tx3)">
+      💡 Los mensajeros cargados quedan sin acceso a la app. Cuando quieras darles login, crea su cuenta desde Supabase Dashboard → Authentication.
+    </div>
+    <div id="mensImportResult"></div>
+  `);
+}
+
+async function agregarMensajero(){
+  const nombre=document.getElementById('mNombre')?.value?.trim();
+  const tel=document.getElementById('mTel')?.value?.trim()||null;
+  const zona=document.getElementById('mZona')?.value||null;
+  if(!nombre){toast('El nombre es obligatorio','er');return;}
+
+  // Crear un UUID manual para mensajeros sin cuenta de auth
+  const fakeId=crypto.randomUUID();
+
+  // Necesitamos insertar en auth.users primero — no es posible sin service_role
+  // Alternativa: usar un email ficticio único para identificarlos
+  const fakeEmail=nombre.toLowerCase().replace(/\s+/g,'.')+'.'+Date.now()+'@mensajero.stc';
+
+  try{
+    // Crear usuario en auth con contraseña temporal (no la usarán)
+    const{data:authData,error:authErr}=await sb.auth.admin?.createUser({
+      email:fakeEmail, password:'STCTemp2026!', email_confirm:true
+    });
+    // Si no tenemos permisos admin, usar inserción directa en profiles con UUID generado
+    // (requiere que el FK de profiles sea opcional o que creemos un auth user real)
+    // Por ahora usamos un workaround: insertar solo en profiles sin FK de auth
+    // Esto requiere quitar el FK constraint o usar service role
+
+    // Usamos la API de signup pero sin email_confirm para mensajeros
+    // Lo más práctico: crear una función SQL que lo haga
+    const{data,error}=await sb.rpc('crear_mensajero',{
+      p_nombre: nombre,
+      p_telefono: tel,
+      p_zona: zona,
+      p_admin_id: S.user.id
+    });
+    if(error)throw error;
+    toast(`${nombre} agregado ✓`,'ok');
+    document.getElementById('mNombre').value='';
+    document.getElementById('mTel').value='';
+  }catch(e){
+    toast('Error: '+e.message,'er');
+  }
+}
+
+async function handleMensFile(file){
+  if(!file)return;
+  const res=document.getElementById('mensImportResult');
+  res.innerHTML=loader();
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){res.innerHTML='<p class="empty">Archivo vacío</p>';return;}
+
+    const validos=rows.filter(r=>r.nombre_completo||r['Nombre Completo']||r['nombre']);
+    if(!validos.length){res.innerHTML='<p style="color:var(--red)">No se encontró columna "nombre_completo"</p>';return;}
+
+    // Preview antes de importar
+    res.innerHTML=`<div class="card" style="cursor:default;margin-top:14px">
+      <div style="font-weight:600;margin-bottom:8px">Vista previa: ${validos.length} mensajeros</div>
+      <table class="tbl">
+        <tr><th>Nombre</th><th>Teléfono</th><th>Zona</th></tr>
+        ${validos.slice(0,5).map(r=>{
+          const nm=r.nombre_completo||r['Nombre Completo']||r.nombre||'';
+          const tel=r.telefono||r['Teléfono']||r.tel||'';
+          const zona=r.zona_principal||r['Zona Principal']||r.zona||'';
+          return `<tr><td>${esc(nm)}</td><td>${esc(tel)}</td><td>${esc(zona)}</td></tr>`;
+        }).join('')}
+        ${validos.length>5?`<tr><td colspan="3" style="color:var(--tx3)">... y ${validos.length-5} más</td></tr>`:''}
+      </table>
+    </div>
+    <button class="btn btn-g btn-w" style="margin-top:10px" onclick="doImportMens()">Importar ${validos.length} mensajeros</button>`;
+
+    // Guardar para importar
+    window._mensData=validos;
+  }catch(e){res.innerHTML=`<p style="color:var(--red)">${esc(e.message)}</p>`;}
+}
+
+async function doImportMens(){
+  const rows=window._mensData;
+  if(!rows?.length)return;
+  const res=document.getElementById('mensImportResult');
+  res.innerHTML=loader();
+  let ok=0,errs=0;
+  for(const r of rows){
+    const nombre=(r.nombre_completo||r['Nombre Completo']||r.nombre||'').trim();
+    const tel=(r.telefono||r['Teléfono']||r.tel||'').toString().trim()||null;
+    const zona=(r.zona_principal||r['Zona Principal']||r.zona||'').trim()||null;
+    if(!nombre){errs++;continue;}
+    try{
+      const{error}=await sb.rpc('crear_mensajero',{
+        p_nombre:nombre, p_telefono:tel, p_zona:zona, p_admin_id:S.user.id
+      });
+      if(error)throw error;
+      ok++;
+    }catch(e){errs++;}
+  }
+  res.innerHTML=`<div class="card" style="cursor:default;border-color:${errs?'var(--amb)':'var(--grn)'}">
+    <div style="color:${errs?'var(--amb)':'var(--grn)'};font-weight:600;margin-bottom:6px">
+      ${errs?'Importación con errores':'✓ Importación completada'}
+    </div>
+    <div style="font-size:var(--fss);color:var(--tx2)">${ok} agregados · ${errs} errores</div>
+  </div>
+  <button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('mensajeros')">Ver mensajeros →</button>`;
+  if(ok>0)toast(`${ok} mensajeros agregados ✓`,'ok');
 }
 
 // ── Historial completo de un mensajero con filtro de fecha ──
@@ -1024,12 +1254,21 @@ async function pgMensPaquetes(){
   setP(loader());
 
   // Paquetes asignados en la fecha al mensajero
-  const{data:eventos}=await sb.from('historial_paquetes')
-    .select('paquete_id,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre),contenedores(codigo))')
-    .eq('mensajero_nuevo',mensId)
-    .eq('accion','asignado')
-    .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
-    .order('realizado_en',{ascending:false});
+  // Para mensajeros simples, buscar paquetes asignados + fecha de asignación
+  // historial_paquetes.mensajero_nuevo solo tiene profiles, así que buscamos
+  // directamente en paquetes filtrado por fecha del historial
+  const{data:paqAsig}=await sb.from('paquetes')
+    .select('id,num_guia,destinatario,direccion_original,estado,zonas(nombre),contenedores(codigo),historial_paquetes!inner(accion,realizado_en)')
+    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`)
+    .eq('historial_paquetes.accion','asignado')
+    .gte('historial_paquetes.realizado_en',diaStart)
+    .lte('historial_paquetes.realizado_en',diaEnd)
+    .order('num_guia');
+  const eventos=(paqAsig||[]).map(p=>({
+    paquete_id:p.id,
+    realizado_en:p.historial_paquetes?.[0]?.realizado_en,
+    paquetes:p
+  }));
 
   const paquetes=eventos||[];
   const entr=paquetes.filter(e=>e.paquetes?.estado==='entregado').length;
@@ -1117,7 +1356,13 @@ async function doSearch(){
     const{data:paq}=await sb.from('paquetes').select('*,zonas(nombre),contenedores(codigo)').eq('num_guia',guia).maybeSingle();
     if(!paq){res.innerHTML='<p class="empty">Guía no encontrada</p>';return;}
     let mensName='—';
-    if(paq.mensajero_id){const{data:prof}=await sb.from('profiles').select('nombre_completo').eq('id',paq.mensajero_id).single();mensName=prof?.nombre_completo||'—';}
+    if(paq.mensajero_simple_id){
+      const{data:m}=await sb.from('mensajeros').select('nombre_completo').eq('id',paq.mensajero_simple_id).single();
+      mensName=m?.nombre_completo||'—';
+    } else if(paq.mensajero_id){
+      const{data:prof}=await sb.from('profiles').select('nombre_completo').eq('id',paq.mensajero_id).single();
+      mensName=prof?.nombre_completo||'—';
+    }
     const{data:hist}=await sb.from('historial_paquetes').select('accion,estado_nuevo,realizado_en,nota,profiles!realizado_por(nombre_completo)').eq('paquete_id',paq.id).order('realizado_en',{ascending:false}).limit(8);
     let h=`<div class="card" style="cursor:default">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
