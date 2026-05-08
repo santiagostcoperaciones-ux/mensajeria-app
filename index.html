@@ -119,21 +119,17 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>Hoy
     </button>
     <button class="nb" id="nb1" onclick="go('contenedores')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6-3 6 3M6 9v10c0 1 .5 2 2 2h8c1.5 0 2-1 2-2V9M9 6v3M15 6v3"/></svg>Contenedores
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8V21H3V8M23 3H1v5h22V3z"/><path d="M10 12h4"/></svg>Contenedores
     </button>
-    <button class="nb" id="nb2" onclick="go('scanner')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v2M3 15v2M7 3h2M15 3h2M21 7v2M21 15v2M7 21h2M15 21h2M7 7h10v10H7z"/></svg>Scan
+    <button class="nb" id="nb2" onclick="go('asignar')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>Asignar
     </button>
     <button class="nb" id="nb3" onclick="go('buscar')">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>Buscar
     </button>
-    <button class="nb" id="nb4" onclick="go('menu')">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>Menú
-    </button>
   </nav>
 </div>
-
-<div class="dlg-bg" id="dlgBg" onclick="if(event.target===this)closeDlg()">
+<div class="dlg-bg" id="dlg">
   <div class="dlg">
     <div class="dlg-t" id="dlgT"></div>
     <div class="dlg-m" id="dlgM"></div>
@@ -141,216 +137,1335 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
     <div class="dlg-a" id="dlgA"></div>
   </div>
 </div>
-
 <div id="toast"></div>
 
 <script>
-const S={user:null,profile:null,scanCb:null,scanStream:null,stack:[],page:'login'};
-const sb=window.supabase.createClient(
-  'https://xxxxxxxxxxx.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
-);
+const SUPABASE_URL='https://vqdepoedhhhggqzmazie.supabase.co';
+const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxZGVwb2VkaGhoZ2dxem1hemllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTM4MzIsImV4cCI6MjA5MzA2OTgzMn0.B5kuBgcIHFnrFCMAD96VwIb6cbTu5eOZVdYhDrLMeV8';
+const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-function esc(t){return String(t).replace(/[&<>"']/g,c=>({
-  '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
-}[c]));}
+const S={
+  user:null,profile:null,stack:[],
+  mensajeros:[],
+  asigMensId:null,asigMensNombre:null,asigLista:[],
+  scanCb:null,scanStream:null,
+  homeFecha:null,
+  // nav context
+  _contId:null,_contCodigo:null,
+  _mensId:null,_mensNombre:null,
+  _auditMensId:null,_auditMensNombre:null,
+};
+const nm={home:0,contenedores:1,asignar:2,buscar:3};
+const stColor={pendiente:'b-am',verificado:'b-bl',asignado:'b-pu',en_ruta:'b-gr',entregado:'b-gr',devuelto:'b-rd',sobrante:'b-rd',fuera_zona:'b-gy'};
 
-function toast(m,t){
-  const el=document.getElementById('toast');
-  el.textContent=m;
-  el.className='';if(t)el.classList.add(t);
-  el.classList.add('show');
-  setTimeout(()=>el.classList.remove('show'),2500);
+// ── Audio ──
+let _ac=null;
+function getAC(){if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();if(_ac.state==='suspended')_ac.resume();return _ac;}
+function beep(type){
+  try{const ac=getAC(),o=ac.createOscillator(),g=ac.createGain();o.connect(g);g.connect(ac.destination);
+    if(type==='ok'){o.frequency.value=880;g.gain.value=.12;o.start();o.stop(ac.currentTime+.12);}
+    else if(type==='er'){o.frequency.value=280;g.gain.value=.15;o.start();o.stop(ac.currentTime+.25);}
+    else if(type==='wa'){o.frequency.value=660;g.gain.value=.1;o.start();o.stop(ac.currentTime+.08);setTimeout(()=>{const o2=ac.createOscillator(),g2=ac.createGain();o2.connect(g2);g2.connect(ac.destination);o2.frequency.value=580;g2.gain.value=.1;o2.start();o2.stop(ac.currentTime+.12);},130);}
+  }catch(e){}
 }
 
-function dialog(t,m,g,btns){
-  document.getElementById('dlgT').textContent=t;
-  document.getElementById('dlgM').textContent=m;
-  document.getElementById('dlgG').textContent=g;
-  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
-  if(btns.length===0){
-    const b=document.createElement('button');
-    b.className='btn btn-p btn-s btn-w';
-    b.textContent='OK';
-    b.onclick=closeDlg;
-    aEl.appendChild(b);
-  }else{
-    btns.forEach(btn=>{
-      const b=document.createElement('button');
-      b.className='btn btn-s '+(btn.c||'btn-p');
-      b.textContent=btn.l;
-      b.onclick=btn.fn;
-      aEl.appendChild(b);
-    });
-  }
-  document.getElementById('dlgBg').classList.add('open');
-}
-
-function closeDlg(){
-  document.getElementById('dlgBg').classList.remove('open');
-}
-
-function go(pg,saveStack=true){
-  if(saveStack&&S.page!==pg)S.stack.push(S.page);
-  S.page=pg;
-  document.querySelectorAll('.nb').forEach((b,i)=>{
-    b.classList.toggle('on',i===['home','contenedores','scanner','buscar','menu'].indexOf(pg));
-  });
-  document.getElementById('btnBack').classList.toggle('vis',S.stack.length>0);
-  const pgEl=document.getElementById('pg');
-  pgEl.innerHTML='<div class="ld"><div class="sp"></div><span style="color:var(--tx3)">Cargando...</span></div>';
-  
-  if(pg==='login')renderLogin();
-  else if(pg==='home')renderHome();
-  else if(pg==='contenedores')renderContenedores();
-  else if(pg==='scanner')renderScanner();
-  else if(pg==='buscar')renderBuscar();
-  else if(pg==='menu')renderMenu();
-  else pgEl.innerHTML='<p style="color:var(--red)">Página no encontrada</p>';
-}
-
-function goBack(){
-  if(S.stack.length>0){
-    const prev=S.stack.pop();
-    go(prev,false);
-  }
-}
-
-function renderLogin(){
-  document.getElementById('pg').innerHTML=`
-    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;padding:20px;text-align:center">
-      <div style="font-size:clamp(24px,8vw,48px);font-weight:700;margin-bottom:30px;background:linear-gradient(135deg,var(--acc),var(--pur));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">
-        STC Express
-      </div>
-      <div style="width:100%;max-width:300px">
-        <label>Usuario</label>
-        <input class="inp" id="loginU" placeholder="Tu usuario" style="margin-bottom:14px">
-        <label>Contraseña</label>
-        <input class="inp" id="loginP" type="password" placeholder="Tu contraseña" style="margin-bottom:20px" onkeypress="if(event.key==='Enter')pgLogin()">
-        <button class="btn btn-p btn-w" onclick="pgLogin()">Entrar</button>
-        <div id="loginErr" style="margin-top:12px;color:var(--red);font-size:var(--fsm)"></div>
-      </div>
-    </div>
-  `;
-}
-
-async function pgLogin(){
-  const u=document.getElementById('loginU').value.trim();
-  const p=document.getElementById('loginP').value;
-  if(!u||!p){
-    document.getElementById('loginErr').textContent='Usuario y contraseña requeridos';
-    return;
-  }
+// ── Router ──
+async function go(page,push=true){
+  stopScan();
+  if(push&&page!=='home')S.stack.push(page);
+  if(page==='home')S.stack=[];
+  document.querySelectorAll('.nb').forEach((b,i)=>b.classList.toggle('on',i===(nm[page]??-1)));
+  document.getElementById('btnBack').classList.toggle('vis',S.stack.length>0&&page!=='home');
+  document.getElementById('barRight').innerHTML='';
   try{
-    const{data,error}=await sb.auth.signInWithPassword({email:`${u}@stcexpress.local`,password:p});
-    if(error)throw error;
-    S.user=data.session.user;
-    const{data:prof}=await sb.from('profiles').select('*').eq('id',S.user.id).single();
-    S.profile=prof;
-    if(prof&&prof.activo){
-      go('home',false);
-    }else{
-      document.getElementById('loginErr').textContent='Usuario no activo';
+    switch(page){
+      case 'home':          await pgHome();break;
+      case 'login':         pgLogin();break;
+      case 'contenedores':  await pgContenedores();break;
+      case 'cont-detalle':  await pgContDetalle();break;
+      case 'cont-mensajero':await pgContMensajero();break;
+      case 'importar':      pgImportar();break;
+      case 'asignar':       await pgAsignar();break;
+      case 'asignar-scan':  pgAsignarScan();break;
+      case 'asignar-lista': pgAsignarLista();break;
+      case 'buscar':        pgBuscar();break;
+      case 'mensajeros':    await pgMensajeros();break;
+      case 'mens-gestionar':await pgMensGestionar();break;
+      case 'mens-historial':await pgMensHistorial();break;
+      case 'mens-paquetes': await pgMensPaquetes();break;
+      default:              await pgHome();
     }
   }catch(e){
-    document.getElementById('loginErr').textContent='Error: '+e.message;
+    console.error('go() error en página',page,e);
+    // Rehabilitar nav siempre
+    document.querySelectorAll('.nav .nb').forEach(b=>b.disabled=false);
+    setP(`<div class="ld"><p style="color:var(--red);text-align:center">${esc(e.message)}<br><br><button class="btn btn-o btn-s" onclick="go('home',false)">← Volver al inicio</button></p></div>`);
+  }
+}
+function goBack(){S.stack.pop();const p=S.stack[S.stack.length-1]||'home';S.stack.pop();go(p);}
+
+// ── UI helpers ──
+function setBar(t,s=''){document.getElementById('pgT').textContent=t;document.getElementById('pgS').textContent=s;}
+function setP(h){document.getElementById('pg').innerHTML=h;}
+function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toast(msg,type='ok'){beep(type);const e=document.getElementById('toast');e.textContent=msg;e.className=type+' show';clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2800);}
+function loader(){return '<div class="ld"><div class="sp"></div></div>';}
+function cleanGuia(raw){
+  // Extraer solo dígitos (las guías son numéricas)
+  const s = String(raw||'').trim().replace(/[^0-9]/g,'');
+  // Debe tener exactamente 16 dígitos y empezar con "26"
+  if(s.length === 16 && s.startsWith('26')) return s;
+  return null;
+}
+function todayISO(){return new Date().toISOString().slice(0,10);}
+function fmtDate(d){if(!d)return'—';try{return new Date(d+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'});}catch(e){return d;}}
+function fmtDateTime(d){if(!d)return'—';try{const dt=new Date(d);return dt.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})+' '+dt.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}catch(e){return d;}}
+function fmtTime(d){if(!d)return'—';try{return new Date(d).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});}catch(e){return d;}}
+
+function dialog(title,msg,guia,acts){
+  document.getElementById('dlgT').textContent=title;
+  document.getElementById('dlgM').textContent=msg;
+  const gEl=document.getElementById('dlgG');gEl.textContent=guia||'';gEl.style.display=guia?'block':'none';
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  acts.forEach(a=>{const b=document.createElement('button');b.className='btn '+(a.c||'btn-o')+' btn-s';b.textContent=a.l;b.onclick=a.fn;aEl.appendChild(b);});
+  document.getElementById('dlg').classList.add('open');
+}
+function closeDlg(){document.getElementById('dlg').classList.remove('open');}
+
+// ══════════════════════════════════════════════════════════════════
+// LOGIN
+// ══════════════════════════════════════════════════════════════════
+function pgLogin(){
+  setBar('STC Express','');
+  document.getElementById('mainNav').style.display='none';
+  setP(`<div style="max-width:320px;margin:40px auto;text-align:center">
+    <div style="font-size:44px;margin-bottom:14px">📦</div>
+    <h2 style="font-size:clamp(20px,5vw,24px);font-weight:700;margin-bottom:4px">STC Express</h2>
+    <p style="color:var(--tx2);font-size:var(--fss);margin-bottom:28px">Sistema de Mensajería · Suba</p>
+    <div style="text-align:left">
+      <label>Email</label>
+      <input class="inp" type="email" id="loginEmail" placeholder="tu@email.com" style="margin-bottom:12px" autocomplete="email">
+      <label>Contraseña</label>
+      <input class="inp" type="password" id="loginPass" placeholder="••••••••" style="margin-bottom:20px" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn btn-p btn-w" onclick="doLogin()" id="loginBtn">Iniciar sesión</button>
+    </div>
+    <p id="loginErr" style="color:var(--red);font-size:var(--fss);margin-top:12px;display:none"></p>
+  </div>`);
+}
+async function doLogin(){
+  const email=document.getElementById('loginEmail').value.trim();
+  const pass=document.getElementById('loginPass').value;
+  const errEl=document.getElementById('loginErr');
+  const btn=document.getElementById('loginBtn');
+  if(!email||!pass){errEl.textContent='Completa ambos campos';errEl.style.display='block';return;}
+  btn.disabled=true;btn.textContent='Cargando...';errEl.style.display='none';
+  try{
+    const{data,error}=await sb.auth.signInWithPassword({email,password:pass});
+    if(error)throw error;
+    S.user=data.user;
+    const{data:prof}=await sb.from('profiles').select('*').eq('id',data.user.id).single();
+    S.profile=prof;
+    if(!prof||!prof.activo)throw new Error('Usuario no activo');
+    document.getElementById('mainNav').style.display='flex';
+    toast('Bienvenido, '+prof.nombre_completo,'ok');
+    go('home',false);
+  }catch(e){
+    errEl.textContent=e.message||'Error de autenticación';
+    errEl.style.display='block';
+    btn.disabled=false;btn.textContent='Iniciar sesión';
   }
 }
 
-function renderHome(){
-  document.getElementById('pg').innerHTML=`<p style="padding:20px">Bienvenido, ${esc(S.profile?.nombre_completo||'Usuario')}!</p>`;
-}
+// ══════════════════════════════════════════════════════════════════
+// HOME — Dashboard Hoy (con fecha seleccionable)
+// ══════════════════════════════════════════════════════════════════
+async function pgHome(){
+  if(!S.user){go('login',false);return;}
+  if(!S.homeFecha)S.homeFecha=todayISO();
+  setBar('STC Express',S.profile?.nombre_completo||'');
+  setP(loader());
 
-function renderContenedores(){
-  document.getElementById('pg').innerHTML=`<p style="padding:20px">Contenedores (en desarrollo)</p>`;
-}
+  const hoy=todayISO();
+  const _ayer=new Date();_ayer.setDate(_ayer.getDate()-1);
+  const ayer=_ayer.getFullYear()+'-'+String(_ayer.getMonth()+1).padStart(2,'0')+'-'+String(_ayer.getDate()).padStart(2,'0');
+  const diaStart=S.homeFecha+'T00:00:00';
+  const diaEnd=S.homeFecha+'T23:59:59';
+  const fechaLabel=S.homeFecha===hoy?'hoy':S.homeFecha===ayer?'ayer':fmtDate(S.homeFecha);
 
-function renderScanner(){
-  document.getElementById('pg').innerHTML=`
-    <div style="padding-top:0">
-      <div id="scanArea" class="scan-area" style="margin-bottom:14px">
-        <video id="scanVid"></video>
-        <div class="scan-line"></div>
+  // Pendientes del DÍA seleccionado: paquetes importados ese día sin mensajero
+  // Rezagados: paquetes de días ANTERIORES sin mensajero (importados antes del día seleccionado)
+  const[{data:asignadosHoy},{data:entregadosHoy},{data:devueltosHoy},{data:pendDia},{data:pendRezagados}]=await Promise.all([
+    // Asignados en el día seleccionado
+    sb.from('historial_paquetes')
+      .select('paquete_id,mensajero_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo)')
+      .eq('accion','asignado')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Entregados en el día seleccionado
+    sb.from('historial_paquetes')
+      .select('paquete_id',{count:'exact',head:true})
+      .eq('accion','entregado')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Devueltos en el día seleccionado
+    sb.from('historial_paquetes')
+      .select('paquete_id',{count:'exact',head:true})
+      .eq('accion','devuelto_bodega')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+    // Pendientes del DÍA: importados ese día, sin mensajero
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null)
+      .gte('created_at',diaStart).lte('created_at',diaEnd),
+    // Rezagados: importados ANTES del día seleccionado, sin mensajero
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null)
+      .lt('created_at',diaStart),
+  ]);
+
+  const totalPendDia=pendDia?.length??0;
+  const totalRezagados=pendRezagados?.length??0;
+  const totalAsig=asignadosHoy?.length??0;
+  const totalEntr=entregadosHoy?.length??0;
+  const totalDev=devueltosHoy?.length??0;
+
+  // Agrupar asignados por mensajero
+  const porMens={};
+  (asignadosHoy||[]).forEach(h=>{
+    const mId=h.mensajero_nuevo||'sin';
+    const mNombre=h.profiles?.nombre_completo||'Sin asignar';
+    if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0};}
+    porMens[mId].count++;
+  });
+
+  let h=`
+    <div class="seg">
+      <button class="seg-btn ${S.homeFecha===hoy?'on':''}" onclick="S.homeFecha='${hoy}';pgHome()">Hoy</button>
+      <button class="seg-btn ${S.homeFecha===ayer?'on':''}" onclick="S.homeFecha='${ayer}';pgHome()">Ayer</button>
+      <button class="seg-btn ${S.homeFecha!==hoy&&S.homeFecha!==ayer?'on':''}" onclick="pickFechaHome()">
+        ${S.homeFecha!==hoy&&S.homeFecha!==ayer?'📅 '+fmtDate(S.homeFecha):'📅 Fecha'}
+      </button>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="stat-n" style="color:var(--red)">${totalPendDia}</div>
+        <div class="stat-l">Pendientes<br>${fechaLabel}</div>
       </div>
-      <input class="inp" id="scanInput" placeholder="Guía manual" onkeypress="if(event.key==='Enter'){handleScan(this.value);this.value='';}">
-      <div id="scanRes" style="margin-top:14px"></div>
+      <div class="stat">
+        <div class="stat-n" style="color:var(--acc)">${totalAsig}</div>
+        <div class="stat-l">Asignados<br>${fechaLabel}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" style="color:var(--grn)">${totalEntr}</div>
+        <div class="stat-l">Entregados<br>${fechaLabel}</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" style="color:var(--amb)">${totalDev}</div>
+        <div class="stat-l">Devueltos<br>${fechaLabel}</div>
+      </div>
     </div>
   `;
-  initScan(handleScan);
-}
 
-async function handleScan(g){
-  const res=document.getElementById('scanRes');
-  res.innerHTML=`<div class="scan-result" style="background:var(--bg);color:var(--tx2)">✓ ${esc(g)}</div>`;
-}
+  // Accesos rápidos siempre visibles
+  h += `<div style="display:flex;gap:8px;margin-bottom:14px">
+    <button class="btn btn-o btn-s" style="flex:1" onclick="go('buscar')">🔍 Buscar guía</button>
+    <button class="btn btn-o btn-s" style="flex:1" onclick="go('mensajeros')">👥 Mensajeros</button>
+  </div>`;
 
-function renderBuscar(){
-  document.getElementById('pg').innerHTML=`<p style="padding:20px">Buscar (en desarrollo)</p>`;
-}
+  // Alerta pendientes del día
+  if(totalPendDia>0){
+    h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:600;color:var(--red);font-size:var(--fsm)">${totalPendDia} sin asignar ${fechaLabel}</div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Importados este día, sin mensajero</div>
+      </div>
+      <button class="btn btn-d btn-s" onclick="go('asignar')">Asignar →</button>
+    </div>`;
+  }
+  // Alerta rezagados (días anteriores)
+  if(totalRezagados>0){
+    h+=`<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <div>
+        <div style="font-weight:600;color:var(--amb);font-size:var(--fsm)">${totalRezagados} rezagados de días anteriores</div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Paquetes de contenedores previos sin asignar</div>
+      </div>
+      <button class="btn btn-s" style="background:var(--amb);color:#000;font-weight:600" onclick="go('asignar')">Asignar →</button>
+    </div>`;
+  }
 
-function renderMenu(){
-  document.getElementById('pg').innerHTML=`
-    <div style="padding:14px 0">
-      <div class="card" onclick="pgLogout()">
+  if(totalAsig===0){
+    h+=`<p class="empty">Sin asignaciones ${fechaLabel}</p>`;
+  } else {
+    h+=`<div class="sec-title">Mensajeros · ${fechaLabel}</div>`;
+    Object.entries(porMens).sort((a,b)=>b[1].count-a[1].count).forEach(([mId,m])=>{
+      h+=`<div class="card" onclick="S._auditMensId='${esc(mId)}';S._auditMensNombre='${esc(m.nombre)}';S._auditFecha='${S.homeFecha}';go('mens-historial')">
         <div class="card-row">
-          <div class="ci" style="background:var(--red);color:#fff">↪</div>
-          <div style="flex:1">
-            <div class="ct">Cerrar sesión</div>
-            <div class="cs">${esc(S.profile?.email||'')}</div>
+          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct">${esc(m.nombre)}</div>
+            <div class="cs">${m.count} paquetes asignados ${fechaLabel}</div>
           </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>`;
+    });
+  }
+  setP(h);
+}
+
+function pickFechaHome(){
+  dialog('Seleccionar fecha','','',[{l:'Cancelar',fn:closeDlg}]);
+  document.getElementById('dlgM').innerHTML=`
+    <input type="date" class="inp" id="fechaPicker" value="${S.homeFecha}" max="${todayISO()}" style="margin-bottom:10px">
+    <button class="btn btn-p btn-w btn-s" onclick="const v=document.getElementById('fechaPicker').value;if(v){S.homeFecha=v;closeDlg();pgHome();}">Aplicar</button>
+  `;
+}
+
+// ── Historial de mensajero en fecha específica (desde Home) ──
+async function pgMensHistorial(){
+  const mId=S._auditMensId;
+  const mNombre=S._auditMensNombre||'Mensajero';
+  const fecha=S._auditFecha||todayISO();
+  if(!mId){goBack();return;}
+  setBar(mNombre,fmtDate(fecha));
+  setP(loader());
+
+  const diaStart=fecha+'T00:00:00';
+  const diaEnd=fecha+'T23:59:59';
+
+  const{data:eventos}=await sb.from('historial_paquetes')
+    .select('paquete_id,accion,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre))')
+    .eq('mensajero_nuevo',mId)
+    .eq('accion','asignado')
+    .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
+    .order('realizado_en',{ascending:false});
+
+  if(!eventos?.length){setP('<p class="empty">Sin paquetes asignados este día</p>');return;}
+
+  const entregados=eventos.filter(e=>e.paquetes?.estado==='entregado').length;
+  const devueltos=eventos.filter(e=>e.paquetes?.estado==='devuelto').length;
+
+  let h=`<div class="stat-row">
+    <div class="stat"><div class="stat-n">${eventos.length}</div><div class="stat-l">Asignados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--grn)">${entregados}</div><div class="stat-l">Entregados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--red)">${devueltos}</div><div class="stat-l">Devueltos</div></div>
+  </div>`;
+  eventos.forEach(ev=>{
+    const p=ev.paquetes;if(!p)return;
+    h+=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="min-width:0;flex:1">
+          <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600;color:var(--acc)">${esc(p.num_guia)}</div>
+          <div style="font-size:var(--fss);margin-top:2px">${esc(p.destinatario)}</div>
+          <div style="font-size:var(--fss);color:var(--tx2)">${esc((p.direccion_original||'').slice(0,50))}</div>
+          <span class="chip">${esc(p.zonas?.nombre||'Sin zona')}</span>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <span class="b ${stColor[p.estado]||'b-gy'}">${esc(p.estado)}</span>
+          <div style="font-size:var(--fss);color:var(--tx3);margin-top:3px">${fmtTime(ev.realizado_en)}</div>
         </div>
       </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CONTENEDORES — Lista + detalle + desglose por mensajero
+// ══════════════════════════════════════════════════════════════════
+async function pgContenedores(){
+  setBar('Contenedores','');
+  document.getElementById('barRight').innerHTML=`<button class="btn btn-p btn-s" onclick="go('importar')">+ Importar</button>`;
+  setP(loader());
+
+  const{data:conts}=await sb.from('contenedores')
+    .select('id,codigo,fecha_recepcion,estado,total_paquetes,cliente_origen')
+    .order('created_at',{ascending:false}).limit(40);
+
+  if(!conts?.length){
+    setP(`<div style="text-align:center;padding:30px 14px">
+      <div style="font-size:36px;margin-bottom:12px">📦</div>
+      <p style="font-weight:600;margin-bottom:4px">No hay contenedores aún</p>
+      <p style="color:var(--tx2);font-size:var(--fss);margin-bottom:16px">Importa tu primer archivo Excel</p>
+      <button class="btn btn-p" onclick="go('importar')">📂 Importar Excel</button>
+    </div>`);
+    return;
+  }
+
+  const stConf={pendiente:{c:'b-am',icon:'⏳'},en_proceso:{c:'b-bl',icon:'🔄'},cerrado:{c:'b-gy',icon:'✓'}};
+  let h='';
+  conts.forEach(c=>{
+    const st=stConf[c.estado]||stConf.pendiente;
+    h+=`<div class="card" onclick="S._contId='${c.id}';S._contCodigo='${esc(c.codigo)}';go('cont-detalle')">
+      <div class="card-row">
+        <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">${st.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div class="ct">${esc(c.codigo)}</div>
+          <div class="cs">${fmtDate(c.fecha_recepcion)} · ${c.total_paquetes||0} paq${c.cliente_origen?' · '+esc(c.cliente_origen):''}</div>
+        </div>
+        <span class="b ${st.c}">${esc(c.estado)}</span>
+      </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ── Detalle contenedor con tabs Zonas / Mensajeros ──
+async function pgContDetalle(){
+  const contId=S._contId;
+  const codigo=S._contCodigo||'Contenedor';
+  if(!contId){goBack();return;}
+  setBar(codigo,'');
+  document.getElementById('barRight').innerHTML=`<button class="btn btn-o btn-s" onclick="go('asignar')">Asignar</button>`;
+  setP(loader());
+
+  const{data:paq}=await sb.from('paquetes')
+    .select('id,num_guia,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
+    .eq('contenedor_id',contId);
+
+  if(!paq?.length){setP('<p class="empty">Sin paquetes</p>');return;}
+
+  const total=paq.length;
+  const cntr={};paq.forEach(p=>{cntr[p.estado]=(cntr[p.estado]||0)+1;});
+  const pendCont=paq.filter(p=>['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id).length;
+  const pct=Math.round(100*(cntr.entregado||0)/total);
+
+  // Por zona
+  const byZona={};
+  paq.forEach(p=>{
+    const z=p.zonas?.nombre||'Sin zona';
+    if(!byZona[z])byZona[z]={total:0,pend:0,asig:0,entr:0,dev:0};
+    byZona[z].total++;
+    if(['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id)byZona[z].pend++;
+    else if(['asignado','en_ruta'].includes(p.estado))byZona[z].asig++;
+    else if(p.estado==='entregado')byZona[z].entr++;
+    else if(p.estado==='devuelto')byZona[z].dev++;
+  });
+
+  // Por mensajero
+  const byMens={};
+  paq.forEach(p=>{
+    const mId=p.mensajero_simple_id||p.mensajero_id;
+    if(!mId)return;
+    if(!['asignado','en_ruta','verificado','entregado','devuelto'].includes(p.estado))return;
+    const mNombre=p.mensajeros_data?.nombre_completo||p.profiles?.nombre_completo||'Sin nombre';
+    if(!byMens[mId])byMens[mId]={id:mId,nombre:mNombre,tipo:p.mensajero_simple_id?'mensajero':'profile',total:0,entr:0,dev:0,pend:0};
+    byMens[mId].total++;
+    if(p.estado==='entregado')byMens[mId].entr++;
+    else if(p.estado==='devuelto')byMens[mId].dev++;
+    else byMens[mId].pend++;
+  });
+
+  const statsHTML=`
+    <div class="stat-row">
+      <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Total</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--red)">${pendCont}</div><div class="stat-l">Pendientes</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--acc)">${(cntr.asignado||0)+(cntr.verificado||0)}</div><div class="stat-l">Asignados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--grn)">${cntr.entregado||0}</div><div class="stat-l">Entregados</div></div>
     </div>
+    <div class="progress" style="margin-bottom:4px"><div class="progress-bar" style="width:${pct}%;background:var(--grn)"></div></div>
+    <div style="text-align:right;font-size:var(--fss);color:var(--tx2);margin-bottom:14px">${pct}% entregado</div>
+  `;
+
+  const zonasHTML=()=>{
+    let t='<table class="tbl"><tr><th>Zona</th><th>Total</th><th>Pend</th><th>Asig</th><th>Entr</th></tr>';
+    Object.entries(byZona).sort((a,b)=>b[1].total-a[1].total).forEach(([z,v])=>{
+      t+=`<tr><td><span style="font-size:var(--fss);font-family:var(--mo)">${esc(z)}</span></td>
+        <td>${v.total}</td>
+        <td style="color:${v.pend?'var(--amb)':'var(--tx3)'}">${v.pend}</td>
+        <td style="color:${v.asig?'var(--acc)':'var(--tx3)'}">${v.asig}</td>
+        <td style="color:${v.entr?'var(--grn)':'var(--tx3)'}">${v.entr}</td>
+      </tr>`;
+    });
+    return t+'</table>';
+  };
+
+  const mensHTML=()=>{
+    const entries=Object.values(byMens).sort((a,b)=>b.total-a.total);
+    if(!entries.length)return'<p class="empty">Sin asignaciones</p>';
+    let t='';
+    entries.forEach(m=>{
+      t+=`<div class="card" onclick="S._contId='${contId}';S._mensId='${m.id}';S._mensNombre='${esc(m.nombre)}';go('cont-mensajero')">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct">${esc(m.nombre)}</div>
+            <div class="cs">${m.total} paq · ${m.entr} entregados · ${m.dev} devueltos · ${m.pend} pendientes</div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>`;
+    });
+    return t;
+  };
+
+  // Renderizar con tabs
+  S._contTab = S._contTab || 'zonas';
+  // Guardar funciones globalmente para que los botones puedan llamarlas
+  window._cdZonasHTML = zonasHTML;
+  window._cdMensHTML  = mensHTML;
+
+  setP(statsHTML + `
+    <div class="seg" style="margin-bottom:10px">
+      <button class="seg-btn ${S._contTab==='zonas'?'on':''}" id="tabZonas"
+        onclick="S._contTab='zonas';document.getElementById('tabZonas').classList.add('on');document.getElementById('tabMens').classList.remove('on');document.getElementById('tabContent').innerHTML=window._cdZonasHTML()">Por zona</button>
+      <button class="seg-btn ${S._contTab==='mens'?'on':''}" id="tabMens"
+        onclick="S._contTab='mens';document.getElementById('tabMens').classList.add('on');document.getElementById('tabZonas').classList.remove('on');document.getElementById('tabContent').innerHTML=window._cdMensHTML()">Por mensajero</button>
+    </div>
+    <div id="tabContent">${S._contTab==='zonas' ? zonasHTML() : mensHTML()}</div>
+  `);
+}
+
+// ── Paquetes de un mensajero en un contenedor ──
+async function pgContMensajero(){
+  const contId=S._contId;
+  const mensId=S._mensId;
+  const mensNombre=S._mensNombre||'Mensajero';
+  if(!contId||!mensId){goBack();return;}
+  setBar(mensNombre,S._contCodigo||'');
+  setP(loader());
+
+  // Buscar por mensajero_simple_id O mensajero_id según lo que tenga
+  const{data:paq}=await sb.from('paquetes')
+    .select('num_guia,destinatario,direccion_original,estado,zonas(nombre)')
+    .eq('contenedor_id',contId)
+    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`)
+    .order('estado');
+
+  if(!paq?.length){setP('<p class="empty">Sin paquetes</p>');return;}
+  const entr=paq.filter(p=>p.estado==='entregado').length;
+  const dev=paq.filter(p=>p.estado==='devuelto').length;
+  let h=`<div class="stat-row">
+    <div class="stat"><div class="stat-n">${paq.length}</div><div class="stat-l">Total</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--grn)">${entr}</div><div class="stat-l">Entregados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--red)">${dev}</div><div class="stat-l">Devueltos</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--acc)">${paq.length-entr-dev}</div><div class="stat-l">En curso</div></div>
+  </div>`;
+  paq.forEach(p=>{
+    h+=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="min-width:0;flex:1">
+          <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600;color:var(--acc)">${esc(p.num_guia)}</div>
+          <div style="font-size:var(--fss);margin-top:1px">${esc(p.destinatario)}</div>
+          <div style="font-size:var(--fss);color:var(--tx2)">${esc((p.direccion_original||'').slice(0,50))}</div>
+          <span class="chip">${esc(p.zonas?.nombre||'Sin zona')}</span>
+        </div>
+        <span class="b ${stColor[p.estado]||'b-gy'}" style="flex-shrink:0">${esc(p.estado)}</span>
+      </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// IMPORTAR EXCEL
+// ══════════════════════════════════════════════════════════════════
+function pgImportar(){
+  setBar('Importar contenedor','');
+  setP(`
+    <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="event.preventDefault();this.classList.remove('drag');handleFile(event.dataTransfer.files[0])">
+      <div style="font-size:36px;margin-bottom:8px">📂</div>
+      <p style="font-weight:600;margin-bottom:4px">Selecciona o arrastra el Excel</p>
+      <p style="font-size:var(--fss);color:var(--tx3)">Archivo .xlsx del proveedor</p>
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])">
+    <div id="importPreview"></div>
+  `);
+}
+let _importData=null;
+async function handleFile(file){
+  if(!file)return;
+  const prev=document.getElementById('importPreview');
+  prev.innerHTML=loader();
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){prev.innerHTML='<p class="empty">Archivo vacío</p>';return;}
+    const h=Object.keys(rows[0]);
+    const col=k=>h.find(c=>new RegExp(k,'i').test(c));
+    const colGuia=col('tracking');
+    if(!colGuia){prev.innerHTML='<p style="color:var(--red);margin-top:12px">No se encontró columna "Tracking number"</p>';return;}
+    function parseFecha(v){if(!v)return null;const s=String(v).trim();const m=s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);if(m)return`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;if(/^\d{4}-\d{2}-\d{2}/.test(s))return s.slice(0,10);return null;}
+    const contCode=String(rows[0][col('[uú]ltimo\\s*contenedor')]||'CONT_'+todayISO()).trim();
+    const paquetes=rows.filter(r=>r[colGuia]).map(r=>({
+      guia:String(r[colGuia]).trim(),
+      destinatario:String(r[col('^cliente$')]||'Sin nombre').trim(),
+      telefono:r[col('tel[eé]fono')]?String(r[col('tel[eé]fono')]).trim():null,
+      direccion:String(r[col('direcci[oó]n')]||'').trim(),
+      cp:r[col('postal')]?String(r[col('postal')]).trim():null,
+      municipio:r[col('^municipio$')]?String(r[col('^municipio$')]).trim():null,
+      colonia:r[col('^colonia$')]?String(r[col('^colonia$')]).trim():null,
+      lat:r[col('^latitud$')]?parseFloat(r[col('^latitud$')]):null,
+      lon:r[col('^longitud$')]?parseFloat(r[col('^longitud$')]):null,
+      numero_orden:r[col('orden')]?String(r[col('orden')]).trim():null,
+      cliente_origen:r[col('primario')]?String(r[col('primario')]).trim():null,
+      peso:r[col('peso')]?parseFloat(r[col('peso')]):null,
+      fecha_creacion:parseFecha(r[col('creaci[oó]n')]),
+      fecha_promesa:parseFecha(r[col('promesa')]),
+    }));
+    _importData={paquetes,contCode,fileName:file.name};
+    prev.innerHTML=`<div style="margin-top:14px">
+      <div class="card" style="cursor:default">
+        <div style="margin-bottom:8px"><span class="b b-bl">📦 ${esc(contCode)}</span></div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-n">${paquetes.length}</div><div class="stat-l">Paquetes</div></div>
+          <div class="stat"><div class="stat-n">${new Set(paquetes.map(p=>p.guia)).size}</div><div class="stat-l">Únicos</div></div>
+        </div>
+        <div style="font-size:var(--fss);color:var(--tx3)">📁 ${esc(file.name)}</div>
+      </div>
+      <button class="btn btn-g btn-w" onclick="doImport()" id="importBtn">✓ Importar ${paquetes.length} paquetes</button>
+      <button class="btn btn-o btn-w" style="margin-top:8px" onclick="pgImportar()">Cancelar</button>
+    </div>`;
+  }catch(e){prev.innerHTML=`<p style="color:var(--red);margin-top:12px">${esc(e.message)}</p>`;}
+}
+async function doImport(){
+  if(!_importData)return;
+  const btn=document.getElementById('importBtn');
+  btn.disabled=true;
+  const{paquetes,contCode,fileName}=_importData;
+  try{
+    let{data:ec}=await sb.from('contenedores').select('id').eq('codigo',contCode).maybeSingle();
+    let contId;
+    if(ec){contId=ec.id;}
+    else{
+      const{data:nc,error:ce}=await sb.from('contenedores').insert({
+        codigo:contCode,fecha_recepcion:todayISO(),
+        cliente_origen:paquetes[0]?.cliente_origen||null,
+        estado:'pendiente',total_paquetes:paquetes.length,
+        archivo_original:fileName,importado_por:S.user.id
+      }).select().single();
+      if(ce)throw ce;
+      contId=nc.id;
+    }
+    setP(`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
+      <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
+      <div style="font-size:var(--fsm);font-weight:600">Importando...</div>
+      <div style="font-size:var(--fss);color:var(--tx2)" id="importSub">0 de ${paquetes.length}</div>
+      <div style="width:220px"><div class="progress"><div class="progress-bar" id="importBar" style="width:0%"></div></div></div>
+    </div>`);
+    let ok=0,conZona=0;
+    const bs=50;
+    for(let i=0;i<paquetes.length;i+=bs){
+      const batch=paquetes.slice(i,i+bs);
+      const res=await Promise.all(batch.map(p=>
+        sb.rpc('importar_paquete',{
+          p_num_guia:p.guia,p_contenedor_id:contId,
+          p_destinatario:p.destinatario,p_telefono:p.telefono,
+          p_direccion_original:p.direccion,p_codigo_postal:p.cp,
+          p_municipio:p.municipio,p_colonia:p.colonia,
+          p_lat_proveedor:p.lat,p_lon_proveedor:p.lon,
+          p_numero_orden:p.numero_orden,p_cliente_origen:p.cliente_origen,
+          p_peso_kg:p.peso,p_fecha_creacion_guia:p.fecha_creacion,
+          p_fecha_promesa_entrega:p.fecha_promesa,p_importado_por:S.user.id
+        }).then(({data,error})=>{if(error)return null;return data?.[0]||data;})
+      ));
+      res.forEach(r=>{if(!r)return;if(r.resultado==='nuevo'||r.resultado==='actualizado')ok++;if(r.zona_id)conZona++;});
+      const pct=Math.round(100*(i+batch.length)/paquetes.length);
+      const b=document.getElementById('importBar'),s=document.getElementById('importSub');
+      if(b)b.style.width=pct+'%';if(s)s.textContent=`${i+batch.length} de ${paquetes.length}`;
+    }
+    await sb.from('contenedores').update({total_paquetes:ok,estado:'en_proceso'}).eq('id',contId);
+    S._contTab='zonas';
+    setP(`<div style="padding:14px">
+      <div class="card" style="cursor:default;border-color:var(--grn)">
+        <div style="color:var(--grn);font-weight:600;margin-bottom:10px">✓ Importación completada</div>
+        <div class="stat-row">
+          <div class="stat"><div class="stat-n">${ok}</div><div class="stat-l">Importados</div></div>
+          <div class="stat"><div class="stat-n" style="color:var(--acc)">${conZona}</div><div class="stat-l">Con zona</div></div>
+          <div class="stat"><div class="stat-n" style="color:${ok-conZona>0?'var(--amb)':'var(--tx3)'}">${ok-conZona}</div><div class="stat-l">Sin zona</div></div>
+        </div>
+      </div>
+      <button class="btn btn-p btn-w" onclick="go('asignar')">Asignar paquetes →</button>
+      <button class="btn btn-o btn-w" style="margin-top:8px" onclick="S._contId='${contId}';S._contCodigo='${esc(contCode)}';go('cont-detalle')">Ver contenedor</button>
+    </div>`);
+    _importData=null;toast(`${ok} paquetes importados ✓`,'ok');
+  }catch(e){toast('Error: '+e.message,'er');btn.disabled=false;btn.textContent='Reintentar';}
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ASIGNAR — Multi-contenedor
+// ══════════════════════════════════════════════════════════════════
+async function pgAsignar(){
+  setBar('Asignar paquetes','');
+  setP(loader());
+  // Cargar mensajeros (tabla mensajeros) + admins/operadores (profiles)
+  const [{data:mensList},{data:adminList}] = await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo,zona_principal').eq('activo',true).order('nombre_completo'),
+    sb.from('profiles').select('id,nombre_completo').eq('activo',true).in('rol',['admin','operador']).order('nombre_completo'),
+  ]);
+  // Unificar: mensajeros tienen prefijo 'm:' en el id para distinguirlos
+  const todosLosAsignables = [
+    ...(mensList||[]).map(m=>({...m, tipo:'mensajero'})),
+    ...(adminList||[]).map(a=>({...a, tipo:'profile'})),
+  ];
+  S.mensajeros = todosLosAsignables;
+  setP(`
+    <div style="margin-bottom:14px">
+      <label>Mensajero</label>
+      <select class="inp sel" id="selMens">
+        <option value="">— Seleccionar —</option>
+        <option value="SIN_ASIGNAR">Sin asignar (bolsa)</option>
+        ${(todosLosAsignables).map(m=>`<option value="${m.tipo}:${m.id}">${esc(m.nombre_completo)}${m.zona_principal?' ('+esc(m.zona_principal)+')':''}</option>`).join('')}
+      </select>
+    </div>
+    <div id="bolsaWrap" style="display:none;margin-bottom:14px">
+      <label>Nombre de bolsa</label>
+      <input class="inp" id="bolsaNombre" placeholder="Ej: Imperial A, Bolsa Norte...">
+    </div>
+    <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">Iniciar escaneo →</button>
+    <div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:var(--r2);font-size:var(--fss);color:var(--tx3)">
+      ℹ️ Se aceptan paquetes de cualquier contenedor activo
+    </div>
+  `);
+  const selEl=document.getElementById('selMens');
+  if(selEl) selEl.onchange=function(){
+    const bw=document.getElementById('bolsaWrap');
+    if(bw)bw.style.display=this.value==='SIN_ASIGNAR'?'block':'none';
+  };
+}
+function iniciarAsignacion(){
+  const val=document.getElementById('selMens').value;
+  if(!val){toast('Selecciona un mensajero','er');return;}
+  if(val==='SIN_ASIGNAR'){
+    S.asigMensId='SIN_ASIGNAR';
+    S.asigMensTipo='bolsa';
+    S.asigMensNombre=document.getElementById('bolsaNombre')?.value?.trim()||'Bolsa';
+  } else {
+    const [tipo,id]=val.split(':');
+    S.asigMensId=id;
+    S.asigMensTipo=tipo; // 'mensajero' o 'profile'
+    S.asigMensNombre=S.mensajeros.find(m=>m.id===id)?.nombre_completo||'Mensajero';
+  }
+  S.asigLista=[];
+  go('asignar-scan');
+}
+function pgAsignarScan(){
+  setBar('Escaneando',S.asigMensNombre);
+  setP(`
+    <div class="scan-area" id="scanArea"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
+    <div style="text-align:center;color:var(--tx2);font-size:var(--fss);margin:6px 0" id="sst">Apunta al código</div>
+    <div style="display:flex;gap:8px;margin:8px 0">
+      <input class="inp" id="miInput" placeholder="O escribe la guía..." style="flex:1"
+        onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');this.value='';}}" >
+      <button class="btn btn-p btn-s" onclick="const inp=document.getElementById('miInput');const v=inp.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');inp.value='';}">OK</button>
+    </div>
+    <div id="scanResults" style="max-height:160px;overflow-y:auto"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn btn-o" style="flex:1" id="btnVerLista" onclick="go('asignar-lista')">Ver lista (0)</button>
+      <button class="btn btn-g" style="flex:1" onclick="confirmarAsignacion()">Confirmar ✓</button>
+    </div>
+  `);
+  initScan(onAsigCode);
+}
+async function onAsigCode(guia){
+  if(S.asigLista.find(i=>i.guia===guia)){toast('Ya escaneado','wa');return;}
+  const{data:paq}=await sb.from('paquetes')
+    .select('id,estado,mensajero_id,zona_id,zonas(nombre),profiles!mensajero_id(nombre_completo),contenedores(codigo)')
+    .eq('num_guia',guia).maybeSingle();
+  const el=document.getElementById('scanResults');
+  const updCount=()=>{const b=document.getElementById('btnVerLista');if(b)b.textContent=`Ver lista (${S.asigLista.length})`;};
+  if(!paq){
+    S.asigLista.push({guia,estado:'sobrante',zona:'SOBRANTE',contCodigo:'—'});
+    el.innerHTML=`<div class="scan-result" style="background:rgba(239,68,68,.1);color:var(--red)">📍 ${guia} — SOBRANTE</div>`+el.innerHTML;
+    beep('wa');updCount();return;
+  }
+  const zona=paq.zonas?.nombre||'Sin zona';
+  const cont=paq.contenedores?.codigo||'—';
+  // Verificar si está asignado al mismo mensajero (sea simple o profile)
+  const yaEsMio=(S.asigMensTipo==='mensajero'&&paq.mensajero_simple_id===S.asigMensId
+               ||S.asigMensTipo==='profile'&&paq.mensajero_id===S.asigMensId)
+               &&['asignado','en_ruta','verificado'].includes(paq.estado);
+  const tieneOtro=(paq.mensajero_simple_id||paq.mensajero_id)&&!yaEsMio&&['asignado','en_ruta'].includes(paq.estado);
+  const esDeOtro=tieneOtro;
+  if(yaEsMio){
+    el.innerHTML=`<div class="scan-result" style="background:rgba(59,130,246,.1);color:var(--acc)">ℹ️ ${guia} — ya asignado a ti (${zona})</div>`+el.innerHTML;
+    beep('wa');return;
+  }
+  if(esDeOtro){
+    const otro=paq.mensajeros_data?.nombre_completo||paq.profiles?.nombre_completo||'otro mensajero';
+    beep('wa');
+    dialog('Paquete ya asignado',`Está con ${otro}. ¿Reasignar a ${S.asigMensNombre}?`,guia,[
+      {l:'No, dejar',fn:closeDlg},
+      {l:'Sí, reasignar',c:'btn-p',fn:()=>{
+        closeDlg();
+        S.asigLista.push({guia,estado:'reasignar',zona,paqId:paq.id,contCodigo:cont});
+        el.innerHTML=`<div class="scan-result" style="background:rgba(245,158,11,.1);color:var(--amb)">↔️ ${guia} — REASIGNAR (${zona})</div>`+el.innerHTML;
+        beep('ok');updCount();
+      }}
+    ]);
+    return;
+  }
+  S.asigLista.push({guia,estado:'disponible',zona,paqId:paq.id,contCodigo:cont});
+  el.innerHTML=`<div class="scan-result" style="background:rgba(16,185,129,.1);color:var(--grn)">✓ ${guia} — ${zona} · ${cont}</div>`+el.innerHTML;
+  beep('ok');updCount();
+}
+function pgAsignarLista(){
+  setBar(`Lista (${S.asigLista.length})`,S.asigMensNombre);
+  let h='';
+  if(!S.asigLista.length)h='<p class="empty">No hay paquetes</p>';
+  else{
+    const clrMap={sobrante:'var(--red)',reasignar:'var(--amb)',disponible:'var(--grn)'};
+    S.asigLista.forEach((item,i)=>{
+      h+=`<div class="card" style="border-left:3px solid ${clrMap[item.estado]||'var(--brd)'}">
+        <div class="card-row">
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600">${esc(item.guia)}</div>
+            <div class="cs">${esc(item.zona)} · ${esc(item.contCodigo||'—')} · ${esc(item.estado)}</div>
+          </div>
+          <button class="btn btn-o btn-s" onclick="S.asigLista.splice(${i},1);pgAsignarLista()">✕</button>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`<div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn btn-o" style="flex:1" onclick="goBack()">← Escanear más</button>
+    <button class="btn btn-g" style="flex:1" onclick="confirmarAsignacion()">Confirmar ✓</button>
+  </div>`;
+  setP(h);
+}
+let _confirmando=false;
+async function confirmarAsignacion(){
+  if(!S.asigLista.length){toast('No hay paquetes','er');return;}
+  if(_confirmando)return;
+  _confirmando=true;
+
+  // NO deshabilitar botones del nav — solo mostrar pantalla de carga
+  // que reemplaza el contenido y hace imposible tocar los botones de la lista
+  const total=S.asigLista.length;
+  const esSinAsignar=S.asigMensId==='SIN_ASIGNAR';
+  const nuevoEstado=esSinAsignar?'verificado':'asignado';
+
+  setP(`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;text-align:center">
+    <div class="sp" style="width:40px;height:40px;border-width:4px"></div>
+    <div style="font-size:var(--fsm);font-weight:600" id="confirmMsg">Guardando...</div>
+    <div style="font-size:var(--fss);color:var(--tx2)" id="confirmSub">0 de ${total}</div>
+    <div style="width:220px"><div class="progress"><div class="progress-bar" id="confirmBar" style="width:0%"></div></div></div>
+  </div>`);
+
+  let ok=0,errs=0;
+  try{
+    for(let i=0;i<S.asigLista.length;i++){
+      const item=S.asigLista[i];
+      const b=document.getElementById('confirmBar'),s=document.getElementById('confirmSub');
+      if(b)b.style.width=Math.round(100*i/total)+'%';
+      if(s)s.textContent=`${i} de ${total}`;
+      try{
+        if(item.estado==='sobrante'){
+          const{data:np}=await sb.from('paquetes').insert({
+            num_guia:item.guia,contenedor_id:null,destinatario:'SOBRANTE',
+            direccion_original:'Sobrante escaneado',estado:nuevoEstado,
+            mensajero_id:esSinAsignar?null:S.asigMensId,created_by:S.user.id
+          }).select().single();
+          if(np)await sb.from('historial_paquetes').insert({paquete_id:np.id,accion:'marcado_sobrante',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
+        }else{
+          const upd={estado:nuevoEstado,updated_by:S.user.id};
+          if(esSinAsignar){
+            upd.mensajero_simple_id=null; upd.mensajero_id=null;
+          } else if(S.asigMensTipo==='mensajero'){
+            upd.mensajero_simple_id=S.asigMensId; upd.mensajero_id=null;
+          } else {
+            upd.mensajero_id=S.asigMensId; upd.mensajero_simple_id=null;
+          }
+          await sb.from('paquetes').update(upd).eq('id',item.paqId);
+          await sb.from('historial_paquetes').insert({
+            paquete_id:item.paqId,
+            accion:item.estado==='reasignar'?'reasignado':'asignado',
+            estado_nuevo:nuevoEstado,
+            mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
+            realizado_por:S.user.id
+          });
+        }
+        ok++;
+      }catch(e){errs++;}
+    }
+
+    const b=document.getElementById('confirmBar'),m=document.getElementById('confirmMsg'),s=document.getElementById('confirmSub');
+    if(b){b.style.width='100%';b.style.background=errs?'var(--amb)':'var(--grn)';}
+    if(m)m.textContent=errs?`Completado con ${errs} errores`:'¡Listo!';
+    if(s)s.textContent=`${ok} paquetes guardados`;
+    beep(errs?'wa':'ok');
+    await new Promise(r=>setTimeout(r,800));
+
+  }catch(e){
+    toast('Error inesperado: '+e.message,'er');
+  }finally{
+    // SIEMPRE se ejecuta — garantiza que la app nunca queda bloqueada
+    _confirmando=false;
+    S.asigLista=[];
+    // Rehabilitar botones del nav explícitamente por si acaso
+    document.querySelectorAll('.nav .nb').forEach(b=>b.disabled=false);
+  }
+
+  // Navegar siempre, sin importar resultado
+  try{
+    toast(`${ok} asignados ✓${errs?`, ${errs} errores`:''}`,'ok');
+    await go('asignar');
+  }catch(e){
+    // Si go() falla, forzar home como fallback
+    toast('Volviendo al inicio...','wa');
+    await go('home',false);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MENSAJEROS — Vista global por mensajero
+// ══════════════════════════════════════════════════════════════════
+async function pgMensajeros(){
+  setBar('Mensajeros','');
+  // Botón de gestión solo para admins
+  if(S.profile?.rol==='admin'){
+    document.getElementById('barRight').innerHTML=`<button class="btn btn-p btn-s" onclick="go('mens-gestionar')">+ Agregar</button>`;
+  }
+  setP(loader());
+  const [{data:mensajerosList},{data:adminList2}] = await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo,telefono,activo,zona_principal').order('nombre_completo'),
+    sb.from('profiles').select('id,nombre_completo,telefono,activo,zona_principal,rol').in('rol',['admin','operador']).order('nombre_completo'),
+  ]);
+  const mens=[
+    ...(mensajerosList||[]).map(m=>({...m,rol:'mensajero',_tabla:'mensajeros'})),
+    ...(adminList2||[]).map(a=>({...a,_tabla:'profiles'})),
+  ];
+  if(!mens?.length){
+    setP(`<div style="text-align:center;padding:30px 14px">
+      <div style="font-size:36px;margin-bottom:12px">👥</div>
+      <p style="font-weight:600;margin-bottom:4px">No hay mensajeros registrados</p>
+      ${S.profile?.rol==='admin'?'<button class="btn btn-p" style="margin-top:12px" onclick="go('mens-gestionar')">+ Agregar mensajeros</button>':''}
+    </div>`);
+    return;
+  }
+  // Separar por rol
+  const mensajeros=mens.filter(m=>m.rol==='mensajero');
+  const admins=mens.filter(m=>m.rol!=='mensajero');
+  let h='';
+  if(mensajeros.length){
+    h+=`<div class="sec-title">Mensajeros (${mensajeros.length})</div>`;
+    mensajeros.forEach(m=>{
+      h+=`<div class="card">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
+          <div style="flex:1;min-width:0" onclick="S._mensId='${m.id}';S._mensNombre='${esc(m.nombre_completo)}';go('mens-paquetes')" >
+            <div class="ct">${esc(m.nombre_completo)}</div>
+            <div class="cs">${m.telefono?'📞 '+esc(m.telefono):'Sin teléfono'}${m.zona_principal?' · '+esc(m.zona_principal):''}</div>
+          </div>
+          ${S.profile?.rol==='admin'?`<button class="btn btn-o btn-s" style="font-size:10px;padding:0 8px" onclick="toggleMensActivo('${m.id}','${esc(m.nombre_completo)}',${m.activo})">${m.activo?'✓ Activo':'✗ Inactivo'}</button>`:''}
+        </div>
+      </div>`;
+    });
+  }
+  if(admins.length){
+    h+=`<div class="sec-title" style="margin-top:8px">Admins / Operadores (${admins.length})</div>`;
+    admins.forEach(m=>{
+      h+=`<div class="card" onclick="S._mensId='${m.id}';S._mensNombre='${esc(m.nombre_completo)}';go('mens-paquetes')">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">🔑</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct">${esc(m.nombre_completo)}</div>
+            <div class="cs">${esc(m.rol)} · ${m.activo?'Activo':'Inactivo'}</div>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
+        </div>
+      </div>`;
+    });
+  }
+  setP(h);
+}
+
+async function toggleMensActivo(id, nombre, activo){
+  const nuevoEstado = !activo;
+  dialog(
+    nuevoEstado ? 'Activar mensajero' : 'Desactivar mensajero',
+    `¿${nuevoEstado?'Activar':'Desactivar'} a ${nombre}?`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l: nuevoEstado?'Activar':'Desactivar', c: nuevoEstado?'btn-g':'btn-d', fn: async()=>{
+        closeDlg();
+        await sb.from('profiles').update({activo:nuevoEstado}).eq('id',id);
+        toast(`${nombre} ${nuevoEstado?'activado':'desactivado'}`,'ok');
+        pgMensajeros();
+      }}
+    ]
+  );
+}
+
+// ── Gestión de mensajeros (solo admin) ──
+async function pgMensGestionar(){
+  setBar('Agregar mensajeros','');
+  setP(`
+    <div style="margin-bottom:16px">
+      <div class="sec-title">Agregar uno a uno</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div><label>Nombre completo *</label><input class="inp" id="mNombre" placeholder="Juan Pérez"></div>
+        <div><label>Teléfono</label><input class="inp" id="mTel" placeholder="3001234567" type="tel"></div>
+        <div><label>Zona principal</label>
+          <select class="inp sel" id="mZona">
+            <option value="">— Sin zona específica —</option>
+            ${['ORIENTE_1','ORIENTE_2','ORIENTE_3','ORIENTE_4','ORIENTE_5','LOMA_1','LOMA_2','LOMA_3','NORTE','IMPERIAL','SUBAZAR','LISBOA','BILBAO','FONTANAR','RINCON','COSTA_AZUL','FLORES','GAITANA','GUAYMARAL'].map(z=>`<option value="${z}">${z}</option>`).join('')}
+          </select>
+        </div>
+        <button class="btn btn-p btn-w" onclick="agregarMensajero()">+ Agregar mensajero</button>
+      </div>
+    </div>
+
+    <div class="sec-title">Cargar desde Excel</div>
+    <div class="file-drop" onclick="document.getElementById('mensFileInput').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="event.preventDefault();this.classList.remove('drag');handleMensFile(event.dataTransfer.files[0])">
+      <div style="font-size:28px;margin-bottom:6px">📋</div>
+      <p style="font-weight:600;font-size:var(--fsm);margin-bottom:2px">Selecciona el Excel</p>
+      <p style="font-size:var(--fss);color:var(--tx3)">Columnas: nombre_completo · telefono · zona_principal</p>
+    </div>
+    <input type="file" id="mensFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleMensFile(this.files[0])">
+
+    <div style="margin-top:12px;padding:10px;background:var(--bg);border-radius:var(--r2);font-size:var(--fss);color:var(--tx3)">
+      💡 Los mensajeros cargados quedan sin acceso a la app. Cuando quieras darles login, crea su cuenta desde Supabase Dashboard → Authentication.
+    </div>
+    <div id="mensImportResult"></div>
+  `);
+}
+
+async function agregarMensajero(){
+  const nombre=document.getElementById('mNombre')?.value?.trim();
+  const tel=document.getElementById('mTel')?.value?.trim()||null;
+  const zona=document.getElementById('mZona')?.value||null;
+  if(!nombre){toast('El nombre es obligatorio','er');return;}
+
+  // Crear un UUID manual para mensajeros sin cuenta de auth
+  const fakeId=crypto.randomUUID();
+
+  // Necesitamos insertar en auth.users primero — no es posible sin service_role
+  // Alternativa: usar un email ficticio único para identificarlos
+  const fakeEmail=nombre.toLowerCase().replace(/\s+/g,'.')+'.'+Date.now()+'@mensajero.stc';
+
+  try{
+    // Crear usuario en auth con contraseña temporal (no la usarán)
+    const{data:authData,error:authErr}=await sb.auth.admin?.createUser({
+      email:fakeEmail, password:'STCTemp2026!', email_confirm:true
+    });
+    // Si no tenemos permisos admin, usar inserción directa en profiles con UUID generado
+    // (requiere que el FK de profiles sea opcional o que creemos un auth user real)
+    // Por ahora usamos un workaround: insertar solo en profiles sin FK de auth
+    // Esto requiere quitar el FK constraint o usar service role
+
+    // Usamos la API de signup pero sin email_confirm para mensajeros
+    // Lo más práctico: crear una función SQL que lo haga
+    const{data,error}=await sb.rpc('crear_mensajero',{
+      p_nombre: nombre,
+      p_telefono: tel,
+      p_zona: zona,
+      p_admin_id: S.user.id
+    });
+    if(error)throw error;
+    toast(`${nombre} agregado ✓`,'ok');
+    document.getElementById('mNombre').value='';
+    document.getElementById('mTel').value='';
+  }catch(e){
+    toast('Error: '+e.message,'er');
+  }
+}
+
+async function handleMensFile(file){
+  if(!file)return;
+  const res=document.getElementById('mensImportResult');
+  res.innerHTML=loader();
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){res.innerHTML='<p class="empty">Archivo vacío</p>';return;}
+
+    const validos=rows.filter(r=>r.nombre_completo||r['Nombre Completo']||r['nombre']);
+    if(!validos.length){res.innerHTML='<p style="color:var(--red)">No se encontró columna "nombre_completo"</p>';return;}
+
+    // Preview antes de importar
+    res.innerHTML=`<div class="card" style="cursor:default;margin-top:14px">
+      <div style="font-weight:600;margin-bottom:8px">Vista previa: ${validos.length} mensajeros</div>
+      <table class="tbl">
+        <tr><th>Nombre</th><th>Teléfono</th><th>Zona</th></tr>
+        ${validos.slice(0,5).map(r=>{
+          const nm=r.nombre_completo||r['Nombre Completo']||r.nombre||'';
+          const tel=r.telefono||r['Teléfono']||r.tel||'';
+          const zona=r.zona_principal||r['Zona Principal']||r.zona||'';
+          return `<tr><td>${esc(nm)}</td><td>${esc(tel)}</td><td>${esc(zona)}</td></tr>`;
+        }).join('')}
+        ${validos.length>5?`<tr><td colspan="3" style="color:var(--tx3)">... y ${validos.length-5} más</td></tr>`:''}
+      </table>
+    </div>
+    <button class="btn btn-g btn-w" style="margin-top:10px" onclick="doImportMens()">Importar ${validos.length} mensajeros</button>`;
+
+    // Guardar para importar
+    window._mensData=validos;
+  }catch(e){res.innerHTML=`<p style="color:var(--red)">${esc(e.message)}</p>`;}
+}
+
+async function doImportMens(){
+  const rows=window._mensData;
+  if(!rows?.length)return;
+  const res=document.getElementById('mensImportResult');
+  res.innerHTML=loader();
+  let ok=0,errs=0;
+  for(const r of rows){
+    const nombre=(r.nombre_completo||r['Nombre Completo']||r.nombre||'').trim();
+    const tel=(r.telefono||r['Teléfono']||r.tel||'').toString().trim()||null;
+    const zona=(r.zona_principal||r['Zona Principal']||r.zona||'').trim()||null;
+    if(!nombre){errs++;continue;}
+    try{
+      const{error}=await sb.rpc('crear_mensajero',{
+        p_nombre:nombre, p_telefono:tel, p_zona:zona, p_admin_id:S.user.id
+      });
+      if(error)throw error;
+      ok++;
+    }catch(e){errs++;}
+  }
+  res.innerHTML=`<div class="card" style="cursor:default;border-color:${errs?'var(--amb)':'var(--grn)'}">
+    <div style="color:${errs?'var(--amb)':'var(--grn)'};font-weight:600;margin-bottom:6px">
+      ${errs?'Importación con errores':'✓ Importación completada'}
+    </div>
+    <div style="font-size:var(--fss);color:var(--tx2)">${ok} agregados · ${errs} errores</div>
+  </div>
+  <button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('mensajeros')">Ver mensajeros →</button>`;
+  if(ok>0)toast(`${ok} mensajeros agregados ✓`,'ok');
+}
+
+// ── Historial completo de un mensajero con filtro de fecha ──
+async function pgMensPaquetes(){
+  const mensId=S._mensId;
+  const mensNombre=S._mensNombre||'Mensajero';
+  if(!mensId){goBack();return;}
+  if(!S._mensFecha)S._mensFecha=todayISO();
+  setBar(mensNombre,'');
+
+  const hoy=todayISO();
+  const _ayer=new Date();_ayer.setDate(_ayer.getDate()-1);
+  const ayer=_ayer.getFullYear()+'-'+String(_ayer.getMonth()+1).padStart(2,'0')+'-'+String(_ayer.getDate()).padStart(2,'0');
+  
+  const diaStart=S._mensFecha+'T00:00:00';
+  const diaEnd=S._mensFecha+'T23:59:59';
+  const fechaLabel=S._mensFecha===hoy?'Hoy':S._mensFecha===ayer?'Ayer':fmtDate(S._mensFecha);
+
+  setP(loader());
+
+  // Paquetes asignados en la fecha al mensajero
+  // Para mensajeros simples, buscar paquetes asignados + fecha de asignación
+  // historial_paquetes.mensajero_nuevo solo tiene profiles, así que buscamos
+  // directamente en paquetes filtrado por fecha del historial
+  const{data:paqAsig}=await sb.from('paquetes')
+    .select('id,num_guia,destinatario,direccion_original,estado,zonas(nombre),contenedores(codigo),historial_paquetes!inner(accion,realizado_en)')
+    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`)
+    .eq('historial_paquetes.accion','asignado')
+    .gte('historial_paquetes.realizado_en',diaStart)
+    .lte('historial_paquetes.realizado_en',diaEnd)
+    .order('num_guia');
+  const eventos=(paqAsig||[]).map(p=>({
+    paquete_id:p.id,
+    realizado_en:p.historial_paquetes?.[0]?.realizado_en,
+    paquetes:p
+  }));
+
+  const paquetes=eventos||[];
+  const entr=paquetes.filter(e=>e.paquetes?.estado==='entregado').length;
+  const dev=paquetes.filter(e=>e.paquetes?.estado==='devuelto').length;
+  const pend=paquetes.length-entr-dev;
+
+  const seg=`<div class="seg">
+    <button class="seg-btn ${S._mensFecha===hoy?'on':''}" onclick="S._mensFecha='${hoy}';pgMensPaquetes()">Hoy</button>
+    <button class="seg-btn ${S._mensFecha===ayer?'on':''}" onclick="S._mensFecha='${ayer}';pgMensPaquetes()">Ayer</button>
+    <button class="seg-btn" onclick="pickFechaMens()">📅 ${S._mensFecha!==hoy&&S._mensFecha!==ayer?fmtDate(S._mensFecha):'Fecha'}</button>
+  </div>`;
+
+  const stats=`<div class="stat-row">
+    <div class="stat"><div class="stat-n">${paquetes.length}</div><div class="stat-l">Total</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--grn)">${entr}</div><div class="stat-l">Entregados</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--red)">${dev}</div><div class="stat-l">Devueltos</div></div>
+    <div class="stat"><div class="stat-n" style="color:var(--acc)">${pend}</div><div class="stat-l">En curso</div></div>
+  </div>`;
+
+  let lista='';
+  if(!paquetes.length){lista=`<p class="empty">Sin paquetes ${fechaLabel.toLowerCase()}</p>`;}
+  else{
+    paquetes.forEach(ev=>{
+      const p=ev.paquetes;if(!p)return;
+      lista+=`<div class="card" style="cursor:default">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="min-width:0;flex:1">
+            <div style="font-family:var(--mo);font-size:var(--fss);font-weight:600;color:var(--acc)">${esc(p.num_guia)}</div>
+            <div style="font-size:var(--fss);margin-top:1px">${esc(p.destinatario)}</div>
+            <div style="font-size:var(--fss);color:var(--tx2)">${esc((p.direccion_original||'').slice(0,50))}</div>
+            <div style="margin-top:3px;display:flex;gap:4px;flex-wrap:wrap">
+              <span class="chip">${esc(p.zonas?.nombre||'Sin zona')}</span>
+              <span style="font-size:var(--fss);color:var(--tx3)">${esc(p.contenedores?.codigo||'')}</span>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <span class="b ${stColor[p.estado]||'b-gy'}">${esc(p.estado)}</span>
+            <div style="font-size:10px;color:var(--tx3);margin-top:3px">${fmtTime(ev.realizado_en)}</div>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  setP(seg+stats+lista);
+}
+function pickFechaMens(){
+  dialog('Seleccionar fecha','','',[{l:'Cancelar',fn:closeDlg}]);
+  document.getElementById('dlgM').innerHTML=`
+    <input type="date" class="inp" id="fechaPicker" value="${S._mensFecha||todayISO()}" max="${todayISO()}" style="margin-bottom:10px">
+    <button class="btn btn-p btn-w btn-s" onclick="const v=document.getElementById('fechaPicker').value;if(v){S._mensFecha=v;closeDlg();pgMensPaquetes();}">Aplicar</button>
   `;
 }
 
-async function pgLogout(){
-  await sb.auth.signOut();
-  S.user=null;
-  S.profile=null;
-  go('login',false);
+// ══════════════════════════════════════════════════════════════════
+// BUSCAR
+// ══════════════════════════════════════════════════════════════════
+function pgBuscar(){
+  setBar('Buscar guía','');
+  setP(`
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input class="inp" id="buscarInput" placeholder="Número de guía..." style="flex:1" onkeydown="if(event.key==='Enter')doSearch()">
+      <button class="btn btn-p btn-s" onclick="doSearch()">Buscar</button>
+    </div>
+    <button class="btn btn-o btn-w btn-s" id="btnCamara" onclick="toggleBuscarScan()">📷 Escanear con cámara</button>
+    <div id="buscarScanArea" style="display:none;margin:10px 0">
+      <div class="scan-area"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
+    </div>
+    <div id="buscarResult" style="margin-top:12px"></div>
+  `);
+}
+let _buscarScanOn=false;
+function toggleBuscarScan(){
+  _buscarScanOn=!_buscarScanOn;
+  document.getElementById('buscarScanArea').style.display=_buscarScanOn?'block':'none';
+  document.getElementById('btnCamara').textContent=_buscarScanOn?'✕ Cerrar cámara':'📷 Escanear';
+  if(_buscarScanOn)initScan(g=>{stopScan();_buscarScanOn=false;document.getElementById('buscarScanArea').style.display='none';document.getElementById('btnCamara').textContent='📷 Escanear';document.getElementById('buscarInput').value=g;doSearch();});
+  else stopScan();
+}
+async function doSearch(){
+  const guia=cleanGuia(document.getElementById('buscarInput')?.value);
+  if(!guia){toast('Ingresa una guía','er');return;}
+  const res=document.getElementById('buscarResult');
+  res.innerHTML=loader();
+  try{
+    const{data:paq}=await sb.from('paquetes').select('*,zonas(nombre),contenedores(codigo)').eq('num_guia',guia).maybeSingle();
+    if(!paq){res.innerHTML='<p class="empty">Guía no encontrada</p>';return;}
+    let mensName='—';
+    if(paq.mensajero_simple_id){
+      const{data:m}=await sb.from('mensajeros').select('nombre_completo').eq('id',paq.mensajero_simple_id).single();
+      mensName=m?.nombre_completo||'—';
+    } else if(paq.mensajero_id){
+      const{data:prof}=await sb.from('profiles').select('nombre_completo').eq('id',paq.mensajero_id).single();
+      mensName=prof?.nombre_completo||'—';
+    }
+    const{data:hist}=await sb.from('historial_paquetes').select('accion,estado_nuevo,realizado_en,nota,profiles!realizado_por(nombre_completo)').eq('paquete_id',paq.id).order('realizado_en',{ascending:false}).limit(8);
+    let h=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-family:var(--mo);font-weight:600;color:var(--acc)">${esc(guia)}</span>
+        <span class="b ${stColor[paq.estado]||'b-gy'}">${esc(paq.estado)}</span>
+      </div>
+      <div style="font-size:var(--fss);color:var(--tx2);line-height:1.9">
+        <div>👤 ${esc(paq.destinatario)}</div>
+        <div>📍 ${esc(paq.direccion_original)}</div>
+        ${paq.telefono?`<div>📞 ${esc(paq.telefono)}</div>`:''}
+        <div>🗂 <span style="font-family:var(--mo);color:var(--acc)">${esc(paq.zonas?.nombre||'Sin zona')}</span></div>
+        <div>👷 ${esc(mensName)}</div>
+        <div>📦 ${esc(paq.contenedores?.codigo||'—')}</div>
+        ${paq.intentos_entrega?`<div>🔄 Intentos: ${paq.intentos_entrega}</div>`:''}
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">`;
+    if(['pendiente','verificado','asignado','en_ruta'].includes(paq.estado))h+=`<button class="btn btn-d btn-s" onclick="confDevolver('${guia}','${paq.id}')">Devolver</button>`;
+    if(paq.mensajero_id&&['asignado','en_ruta','verificado'].includes(paq.estado))h+=`<button class="btn btn-o btn-s" onclick="confDesasignar('${guia}','${paq.id}')">Quitar asignación</button>`;
+    if(paq.estado==='en_ruta')h+=`<button class="btn btn-g btn-s" onclick="confEntregado('${guia}','${paq.id}')">Entregado ✓</button>`;
+    h+='</div>';
+    if(hist?.length){
+      h+='<div style="font-size:var(--fss);font-weight:600;color:var(--tx2);margin-bottom:6px">Historial</div>';
+      hist.forEach(ev=>{
+        const who=ev.profiles?.nombre_completo||'—';
+        h+=`<div style="font-size:var(--fss);color:var(--tx3);padding:5px 0;border-bottom:1px solid var(--brd)">
+          <span style="color:var(--tx2);font-weight:500">${esc(ev.accion)}</span>${ev.estado_nuevo?` → ${esc(ev.estado_nuevo)}`:''}
+          <span style="float:right">${fmtTime(ev.realizado_en)}</span><br>
+          <span>${who}</span>${ev.nota?` · <span style="color:var(--tx3)">${esc(ev.nota)}</span>`:''}
+        </div>`;
+      });
+    }
+    res.innerHTML=h;
+  }catch(e){res.innerHTML=`<p style="color:var(--red)">${esc(e.message)}</p>`;}
+}
+function confDesasignar(guia,paqId){
+  dialog('Quitar asignación','¿Desasignar este paquete?',guia,[
+    {l:'Cancelar',fn:closeDlg},
+    {l:'Desasignar',c:'btn-d',fn:async()=>{closeDlg();await sb.from('paquetes').update({mensajero_id:null,estado:'verificado',updated_by:S.user.id}).eq('id',paqId);await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'desasignado',estado_nuevo:'verificado',realizado_por:S.user.id});toast('Desasignado ✓','ok');doSearch();}}
+  ]);
+}
+function confDevolver(guia,paqId){
+  dialog('Devolver a bodega','',guia,[]);
+  document.getElementById('dlgM').innerHTML=`
+    <select class="inp sel" id="devMotivo" style="margin-bottom:8px">
+      <option value="destinatario_ausente">Destinatario ausente</option>
+      <option value="direccion_errada">Dirección errada</option>
+      <option value="rechazado_cliente">Rechazado por cliente</option>
+      <option value="zona_peligrosa">Zona peligrosa</option>
+      <option value="sin_acceso">Sin acceso</option>
+      <option value="otro">Otro</option>
+    </select>
+    <input class="inp" id="devNota" placeholder="Nota opcional...">
+  `;
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  const bc=document.createElement('button');bc.className='btn btn-o btn-s';bc.textContent='Cancelar';bc.onclick=closeDlg;
+  const bd=document.createElement('button');bd.className='btn btn-d btn-s';bd.textContent='Devolver';
+  bd.onclick=async()=>{
+    closeDlg();
+    const motivo=document.getElementById('devMotivo').value;
+    const nota=document.getElementById('devNota')?.value||'';
+    const{data:p}=await sb.from('paquetes').select('intentos_entrega').eq('id',paqId).single();
+    const intentos=(p?.intentos_entrega||0)+1;
+    await sb.from('paquetes').update({estado:'devuelto',mensajero_id:null,intentos_entrega:intentos,motivo_ult_devolucion:motivo,detalle_devolucion:nota,updated_by:S.user.id}).eq('id',paqId);
+    await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'devuelto_bodega',estado_nuevo:'devuelto',motivo:motivo,nota:nota,realizado_por:S.user.id});
+    toast(`Devuelto (intento ${intentos}) ✓`,'ok');doSearch();
+  };
+  aEl.appendChild(bc);aEl.appendChild(bd);
+}
+function confEntregado(guia,paqId){
+  dialog('Confirmar entrega','¿Marcar como entregado?',guia,[
+    {l:'Cancelar',fn:closeDlg},
+    {l:'Entregado ✓',c:'btn-g',fn:async()=>{closeDlg();await sb.from('paquetes').update({estado:'entregado',updated_by:S.user.id}).eq('id',paqId);await sb.from('historial_paquetes').insert({paquete_id:paqId,accion:'entregado',estado_nuevo:'entregado',realizado_por:S.user.id});toast('Entregado ✓','ok');doSearch();}}
+  ]);
 }
 
+// ══════════════════════════════════════════════════════════════════
+// SCANNER
+// ══════════════════════════════════════════════════════════════════
+let _scanLastCode=null,_scanLastTime=0,_scanLocked=false;
+const SCAN_COOLDOWN_MS=1500;
 async function initScan(callback){
-  S.scanCb=callback;
+  S.scanCb=callback;_scanLastCode=null;_scanLastTime=0;_scanLocked=false;
   try{
-    const vid=document.getElementById('scanVid');
-    if(!vid)return;
-    S.scanStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}}
-    });
-    vid.srcObject=S.scanStream;
-    await vid.play();
+    const vid=document.getElementById('scanVid');if(!vid)return;
+    S.scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:640},height:{ideal:480}}});
+    vid.srcObject=S.scanStream;await vid.play();
     if('BarcodeDetector' in window){
       const det=new BarcodeDetector({formats:['code_128','ean_13','ean_8','code_39']});
-      let lastCode=null,lastTime=0,locked=false;
-      const COOLDOWN=1500;
       const loop=async()=>{
         if(!S.scanStream)return;
         const now=Date.now();
-        if(!locked&&(now-lastTime)>=COOLDOWN){
+        if(!_scanLocked&&(now-_scanLastTime)>=SCAN_COOLDOWN_MS){
           try{
             const codes=await det.detect(vid);
             if(codes.length){
-              const g=codes[0].rawValue;
-              if(g&&(g!==lastCode||(now-lastTime)>=COOLDOWN*2)){
-                lastCode=g;
-                lastTime=now;
-                locked=true;
+              const g=cleanGuia(codes[0].rawValue);
+              if(g&&(g!==_scanLastCode||(now-_scanLastTime)>=SCAN_COOLDOWN_MS*2)){
+                _scanLastCode=g;_scanLastTime=now;_scanLocked=true;
                 const line=document.querySelector('.scan-line');
-                if(line){
-                  line.style.background='var(--grn)';
-                  line.style.boxShadow='0 0 8px var(--grn)';
-                }
+                if(line){line.style.background='var(--grn)';line.style.boxShadow='0 0 8px var(--grn)';}
                 if(S.scanCb)await S.scanCb(g);
-                setTimeout(()=>{
-                  const l=document.querySelector('.scan-line');
-                  if(l){
-                    l.style.background='var(--red)';
-                    l.style.boxShadow='0 0 8px var(--red)';
-                  }
-                  locked=false;
-                },COOLDOWN);
+                setTimeout(()=>{const l=document.querySelector('.scan-line');if(l){l.style.background='var(--red)';l.style.boxShadow='0 0 8px var(--red)';}  _scanLocked=false;},SCAN_COOLDOWN_MS);
               }
             }
           }catch(e){}
@@ -367,30 +1482,28 @@ async function initScan(callback){
     if(area)area.innerHTML='<div style="padding:20px;text-align:center;color:var(--tx3)">Cámara no disponible</div>';
   }
 }
-
 function stopScan(){
-  if(S.scanStream){
-    S.scanStream.getTracks().forEach(t=>t.stop());
-    S.scanStream=null;
-  }
-  S.scanCb=null;
+  if(S.scanStream){S.scanStream.getTracks().forEach(t=>t.stop());S.scanStream=null;}
+  S.scanCb=null;_scanLastCode=null;_scanLocked=false;
 }
 
+// ══════════════════════════════════════════════════════════════════
+// BUSCAR desde Mensajeros (acceso secundario)
+// ══════════════════════════════════════════════════════════════════
+
+// ══════════════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════════════
 async function init(){
   const{data:{session}}=await sb.auth.getSession();
   if(session){
     S.user=session.user;
     const{data:prof}=await sb.from('profiles').select('*').eq('id',session.user.id).single();
     S.profile=prof;
-    if(prof&&prof.activo){
-      document.getElementById('mainNav').style.display='flex';
-      go('home',false);
-      return;
-    }
+    if(prof&&prof.activo){document.getElementById('mainNav').style.display='flex';go('home',false);return;}
   }
   go('login',false);
 }
-
 init();
 </script>
 </body>
