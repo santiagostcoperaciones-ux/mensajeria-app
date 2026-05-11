@@ -147,7 +147,7 @@ const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const S={
   user:null,profile:null,stack:[],
   mensajeros:[],
-  asigMensId:null,asigMensNombre:null,asigLista:[],
+  asigMensId:null,asigMensTipo:null,asigMensNombre:null,asigLista:[],
   scanCb:null,scanStream:null,
   homeFecha:null,
   // nav context
@@ -882,8 +882,7 @@ async function onAsigCode(guia){
   const yaEsMio=(S.asigMensTipo==='mensajero'&&paq.mensajero_simple_id===S.asigMensId
                ||S.asigMensTipo==='profile'&&paq.mensajero_id===S.asigMensId)
                &&['asignado','en_ruta','verificado'].includes(paq.estado);
-  const tieneOtro=(paq.mensajero_simple_id||paq.mensajero_id)&&!yaEsMio&&['asignado','en_ruta'].includes(paq.estado);
-  const esDeOtro=tieneOtro;
+  const esDeOtro=(paq.mensajero_simple_id||paq.mensajero_id)&&!yaEsMio&&['asignado','en_ruta'].includes(paq.estado);
   if(yaEsMio){
     el.innerHTML=`<div class="scan-result" style="background:rgba(59,130,246,.1);color:var(--acc)">ℹ️ ${guia} — ya asignado a ti (${zona})</div>`+el.innerHTML;
     beep('wa');return;
@@ -1257,13 +1256,18 @@ async function pgMensPaquetes(){
   // Para mensajeros simples, buscar paquetes asignados + fecha de asignación
   // historial_paquetes.mensajero_nuevo solo tiene profiles, así que buscamos
   // directamente en paquetes filtrado por fecha del historial
+  // Buscar paquetes asignados a este mensajero en la fecha
   const{data:paqAsig}=await sb.from('paquetes')
-    .select('id,num_guia,destinatario,direccion_original,estado,zonas(nombre),contenedores(codigo),historial_paquetes!inner(accion,realizado_en)')
-    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`)
-    .eq('historial_paquetes.accion','asignado')
-    .gte('historial_paquetes.realizado_en',diaStart)
-    .lte('historial_paquetes.realizado_en',diaEnd)
-    .order('num_guia');
+    .select('id,num_guia,destinatario,direccion_original,estado,zonas(nombre),contenedores(codigo)')
+    .or(`mensajero_simple_id.eq.${mensId},mensajero_id.eq.${mensId}`);
+  // Filtrar por fechas del historial (más simple que el join)
+  const{data:histAsig}=await sb.from('historial_paquetes')
+    .select('paquete_id,realizado_en')
+    .eq('accion','asignado')
+    .gte('realizado_en',diaStart)
+    .lte('realizado_en',diaEnd);
+  const histMap=new Map(histAsig?.map(h=>[h.paquete_id,h.realizado_en])||[]);
+  const paqAsig_filtered=(paqAsig||[]).filter(p=>histMap.has(p.id));
   const eventos=(paqAsig||[]).map(p=>({
     paquete_id:p.id,
     realizado_en:p.historial_paquetes?.[0]?.realizado_en,
