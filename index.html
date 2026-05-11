@@ -1035,7 +1035,7 @@ async function pgMensajeros(){
     setP(`<div style="text-align:center;padding:30px 14px">
       <div style="font-size:36px;margin-bottom:12px">👥</div>
       <p style="font-weight:600;margin-bottom:4px">No hay mensajeros registrados</p>
-      ${S.profile?.rol==='admin'?'<button class="btn btn-p" style="margin-top:12px" onclick="go('mens-gestionar')">+ Agregar mensajeros</button>':''}
+      ${S.profile?.rol==='admin'?`<button class="btn btn-p" style="margin-top:12px" onclick="go('mens-gestionar')">+ Agregar mensajeros</button>`:''}
     </div>`);
     return;
   }
