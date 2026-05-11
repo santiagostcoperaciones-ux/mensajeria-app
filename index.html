@@ -1023,13 +1023,13 @@ async function pgMensajeros(){
     document.getElementById('barRight').innerHTML=`<button class="btn btn-p btn-s" onclick="go('mens-gestionar')">+ Agregar</button>`;
   }
   setP(loader());
-  const [{data:mensajerosList},{data:adminList2}] = await Promise.all([
+  const [{data:mensajerosList},{data:adminList}] = await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,telefono,activo,zona_principal').order('nombre_completo'),
     sb.from('profiles').select('id,nombre_completo,telefono,activo,zona_principal,rol').in('rol',['admin','operador']).order('nombre_completo'),
   ]);
   const mens=[
     ...(mensajerosList||[]).map(m=>({...m,rol:'mensajero',_tabla:'mensajeros'})),
-    ...(adminList2||[]).map(a=>({...a,_tabla:'profiles'})),
+    ...(adminList||[]).map(a=>({...a,_tabla:'profiles'})),
   ];
   if(!mens?.length){
     setP(`<div style="text-align:center;padding:30px 14px">
