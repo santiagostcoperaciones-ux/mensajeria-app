@@ -2032,6 +2032,9 @@ async function confirmarLiquidacion(){
 }
 
 function generarReciboPDF(p, mens, liqId){
+  // Número de recibo legible: últimos 8 caracteres del UUID sin guiones
+  const reciboNum=String(liqId||'').replace(/-/g,'').slice(-8).toUpperCase();
+
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
 
@@ -2083,7 +2086,7 @@ function generarReciboPDF(p, mens, liqId){
 
   // Número de recibo
   setFont(7,'normal',[148,163,184]);
-  doc.text(`#${String(liqId||'').slice(0,8).toUpperCase()}`,PW-MR-42+21,y+20,{align:'center'});
+  doc.text(`#${reciboNum}`,PW-MR-42+21,y+20,{align:'center'});
 
   y=42;
 
@@ -2098,8 +2101,8 @@ function generarReciboPDF(p, mens, liqId){
   setFont(8,'normal',[148,163,184]);
   const infoItems=[];
   if(mens?.num_documento) infoItems.push(`CC ${mens.num_documento}`);
-  if(mens?.telefono)       infoItems.push(`📞 ${mens.telefono}`);
-  if(mens?.placa)          infoItems.push(`🏍 ${mens.placa}`);
+  if(mens?.telefono)       infoItems.push(`Tel: ${mens.telefono}`);
+  if(mens?.placa)          infoItems.push(`Placa: ${mens.placa}`);
   doc.text(infoItems.join('   '), ML+4, y+15);
 
   setFont(8,'normal',[148,163,184]);
@@ -2240,7 +2243,7 @@ function generarReciboPDF(p, mens, liqId){
   setFont(6,'normal',GRAY);
   const ahora=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
   doc.text(`Generado el ${ahora} · STC Express Mensajería`,ML,yFoot);
-  doc.text(`Recibo ${String(liqId||'').slice(0,8).toUpperCase()}`,PW-MR,yFoot,{align:'right'});
+  doc.text(`Recibo #${reciboNum}`,PW-MR,yFoot,{align:'right'});
 
   // ── Descargar ──
   const nombreLimpio=(mens?.nombre_completo||p.mensajero).replace(/\s+/g,'_');
