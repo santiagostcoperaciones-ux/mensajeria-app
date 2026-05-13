@@ -2749,72 +2749,105 @@ async function usuDoImport(){
   const{rowsMens,rowsPrest}=window._usuData||{rowsMens:[],rowsPrest:[]};
   const res=document.getElementById('usuImportResult');
   res.innerHTML=loader();
-  let okMens=0,okPrest=0,errs=0;
+  let okMens=0,okPrest=0;
+  const errores=[];
 
-  // Importar mensajeros
+  // ── Importar mensajeros ──
   for(const r of rowsMens){
-    const nombre=(String(r['MENSAJERO']||'').trim());
-    if(!nombre){errs++;continue;}
+    const nombre=String(r['MENSAJERO']||'').trim();
+    if(!nombre){errores.push('Fila sin nombre, se omitió');continue;}
+
     const doc=String(r['NRO. DOCUMENTO']||'').trim()||null;
     const tel=String(r['TELEFONO']||'').trim()||null;
     const dir=String(r['DIRECCION']||'').trim()||null;
-    const correo=String(r['Correo']||'').trim()||null;
+    const correo=String(r['Correo']||'').trim().toLowerCase()||null;
     const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
-    const fechaNum=r['FECHA DE INGRESO'];
-    let fechaIngreso=null;
-    if(fechaNum&&typeof fechaNum==='number'){
-      const d=XLSX.SSF.parse_date_code(fechaNum);
-      fechaIngreso=`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;
-    }
-    const usuarioXcargo=String(r['USUARIO ACTUAL']||r['Correo']||'').trim()||null;
+    const usuarioXcargo=String(r['USUARIO ACTUAL']||r['Correo']||'').trim().toLowerCase()||null;
     const usuarioPropio=String(r['USUARIO PROPIO']||'').trim().toUpperCase()==='SI';
 
+    // Fecha de ingreso — puede ser número serial Excel o texto
+    let fechaIngreso=null;
+    const fechaRaw=r['FECHA DE INGRESO'];
+    if(fechaRaw){
+      if(typeof fechaRaw==='number'){
+        try{const d=XLSX.SSF.parse_date_code(fechaRaw);fechaIngreso=`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}catch(e){}
+      } else {
+        const s=String(fechaRaw).trim();
+        // Intentar parsear texto como fecha
+        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) fechaIngreso=s;
+      }
+    }
+
+    // Si ya existe por documento, hacer update en lugar de insert
     try{
-      const{error}=await sb.from('mensajeros').upsert({
-        nombre_completo:nombre,
-        num_documento:doc,
-        telefono:tel,
-        direccion:dir,
-        correo:correo,
-        placa:placa,
-        fecha_ingreso:fechaIngreso,
-        usuario_xcargo:usuarioXcargo,
-        usuario_propio:usuarioPropio,
-        activo:true,
-        created_by:S.user.id
-      },{onConflict:'num_documento',ignoreDuplicates:false});
+      let error;
+      if(doc){
+        // Intentar update primero si tiene documento
+        const{data:existe}=await sb.from('mensajeros').select('id').eq('num_documento',doc).maybeSingle();
+        if(existe){
+          ({error}=await sb.from('mensajeros').update({
+            nombre_completo:nombre,telefono:tel,direccion:dir,correo,placa,
+            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+          }).eq('id',existe.id));
+        } else {
+          ({error}=await sb.from('mensajeros').insert({
+            nombre_completo:nombre,num_documento:doc,telefono:tel,direccion:dir,correo,placa,
+            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+          }));
+        }
+      } else {
+        // Sin documento: insert directo
+        ({error}=await sb.from('mensajeros').insert({
+          nombre_completo:nombre,num_documento:null,telefono:tel,direccion:dir,correo,placa,
+          fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+        }));
+      }
       if(error)throw error;
       okMens++;
-    }catch(e){errs++;}
-  }
-
-  // Importar usuarios de préstamo
-  if(rowsPrest.length){
-    for(const r of rowsPrest){
-      const nombre=String(r['NOMBRE']||'').trim();
-      if(!nombre){errs++;continue;}
-      const usuario=String(r['USUARIO']||'').trim()||null;
-      const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
-      try{
-        const{error}=await sb.from('usuarios_prestamo').upsert({
-          nombre,usuario_xcargo:usuario,placa,activo:true,created_by:S.user.id
-        },{onConflict:'usuario_xcargo',ignoreDuplicates:false});
-        if(error)throw error;
-        okPrest++;
-      }catch(e){errs++;}
+    }catch(e){
+      errores.push(`${nombre}: ${e.message}`);
     }
   }
 
+  // ── Importar usuarios de préstamo ──
+  for(const r of rowsPrest){
+    const nombre=String(r['NOMBRE']||'').trim();
+    if(!nombre){errores.push('Fila préstamo sin nombre, se omitió');continue;}
+    const usuario=String(r['USUARIO']||'').trim().toLowerCase()||null;
+    const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
+    try{
+      let error;
+      if(usuario){
+        const{data:existe}=await sb.from('usuarios_prestamo').select('id').eq('usuario_xcargo',usuario).maybeSingle();
+        if(existe){
+          ({error}=await sb.from('usuarios_prestamo').update({nombre,placa,activo:true}).eq('id',existe.id));
+        } else {
+          ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:usuario,placa,activo:true}));
+        }
+      } else {
+        ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:null,placa,activo:true}));
+      }
+      if(error)throw error;
+      okPrest++;
+    }catch(e){
+      errores.push(`Préstamo ${nombre}: ${e.message}`);
+    }
+  }
+
+  const hayErrores=errores.length>0;
   res.innerHTML=`
-    <div class="card" style="cursor:default;border-color:${errs?'var(--amb)':'var(--grn)'};margin-top:10px">
-      <div style="color:${errs?'var(--amb)':'var(--grn)'};font-weight:600;margin-bottom:6px">
-        ${errs?'Importación con errores':'✓ Importación completada'}
+    <div class="card" style="cursor:default;border-color:${hayErrores?'var(--amb)':'var(--grn)'};margin-top:10px">
+      <div style="color:${hayErrores?'var(--amb)':'var(--grn)'};font-weight:600;margin-bottom:6px">
+        ${hayErrores?'Importación con advertencias':'✓ Importación completada'}
       </div>
-      <div style="font-size:var(--fss);color:var(--tx2)">
-        ${okMens} mensajeros · ${okPrest} usuarios préstamo · ${errs} errores
+      <div style="font-size:var(--fss);color:var(--tx2);margin-bottom:${hayErrores?'10px':'0'}">
+        ✓ ${okMens} mensajeros · ✓ ${okPrest} usuarios préstamo${hayErrores?' · ⚠️ '+errores.length+' errores':''}
       </div>
+      ${hayErrores?`<div style="max-height:150px;overflow-y:auto;border-top:1px solid var(--brd);padding-top:8px">
+        ${errores.map(e=>`<div style="font-size:10px;color:var(--red);margin-bottom:3px;word-break:break-all">• ${esc(e)}</div>`).join('')}
+      </div>`:''}
     </div>
-    <button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('usuarios')">Ver usuarios →</button>
+    ${(okMens>0||okPrest>0)?`<button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('usuarios')">Ver usuarios →</button>`:''}
   `;
   if(okMens>0||okPrest>0)toast(`${okMens+okPrest} usuarios importados ✓`,'ok');
 }
