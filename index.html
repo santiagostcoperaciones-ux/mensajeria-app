@@ -1775,65 +1775,118 @@ async function liqHandleFile(file){
   try{
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:'array',cellDates:true});
-    const baseSheet=wb.Sheets['BASE'];
-    const mensSheet=wb.Sheets['MENSAJEROS'];
-    if(!baseSheet||!mensSheet)throw new Error('No se encontró hoja BASE o MENSAJEROS');
+
+    // Acepta hoja Sheet1 (nuevo formato xcargo) o BASE (formato anterior)
+    const sheetName=wb.SheetNames.find(n=>n==='Sheet1')||wb.SheetNames.find(n=>n==='BASE')||wb.SheetNames[0];
+    const baseSheet=wb.Sheets[sheetName];
+    if(!baseSheet)throw new Error('No se encontró ninguna hoja válida en el archivo');
 
     const baseData=XLSX.utils.sheet_to_json(baseSheet);
-    const mensData=XLSX.utils.sheet_to_json(mensSheet);
+    if(!baseData.length)throw new Error('El archivo está vacío');
 
-    // Mapeo alias → nombre real
-    const colAlias=Object.keys(mensData[0]||{})[0];
-    const colReal=Object.keys(mensData[0]||{})[1];
-    const mapeo={};
-    mensData.forEach(r=>{if(r[colAlias]&&r[colReal])mapeo[String(r[colAlias]).trim()]=String(r[colReal]).trim();});
+    // Cargar mensajeros de Supabase — mapear por correo (principal) y cédula (fallback)
+    const{data:mensDB}=await sb.from('mensajeros').select('id,nombre_completo,num_documento,correo').eq('activo',true);
+    const mensMapCorreo={};  // correo → mensajero
+    const mensMapCedula={};  // num_documento → mensajero
+    (mensDB||[]).forEach(m=>{
+      if(m.correo)mensMapCorreo[String(m.correo).trim().toLowerCase()]=m;
+      if(m.num_documento)mensMapCedula[String(m.num_documento).trim()]=m;
+    });
 
-    // Procesar BASE
+    // Procesar filas — solo Entregado
     const df=baseData
       .filter(r=>String(r['Estatus orden en ruta']||'').trim()==='Entregado')
       .map(r=>{
+        // Fecha: puede ser Date, número serial o string
         let fecha=r['Fecha y hora de salida'];
         if(fecha instanceof Date){}
         else if(typeof fecha==='number'){const d=XLSX.SSF.parse_date_code(fecha);fecha=new Date(d.y,d.m-1,d.d);}
-        else fecha=new Date(fecha);
-        const alias=String(r['Nombre operador']||'').trim();
-        return{fecha,nombreReal:mapeo[alias]||alias,valor:parseFloat(r['Valor paquete'])||0,alias};
+        else if(typeof fecha==='string'&&fecha.trim()){fecha=new Date(fecha.trim());}
+        else fecha=null;
+
+        // Match 1: por correo operador (más confiable)
+        const correoOp=String(r['Correo operador']||'').trim().toLowerCase();
+        let mensajeroDB=correoOp?mensMapCorreo[correoOp]:null;
+
+        // Match 2 (fallback): por cédula del campo Nombre operador "1023456789 BTA Nombre..."
+        const operadorRaw=String(r['Nombre operador']||'').trim();
+        if(!mensajeroDB){
+          const cedula=operadorRaw.match(/^(\d+)/)?.[1]||null;
+          if(cedula)mensajeroDB=mensMapCedula[cedula]||null;
+        }
+
+        const valor=parseFloat(r['Valor paquete'])||TARIFAPAQ;
+
+        return{
+          fecha,
+          correoOp,
+          operadorRaw,
+          nombreReal:mensajeroDB?.nombre_completo||operadorRaw,
+          mensajeroId:mensajeroDB?.id||null,
+          valor,
+          tracking:String(r['Tracking number']||'').trim(),
+        };
       })
-      .filter(r=>!isNaN(r.fecha));
+      .filter(r=>r.fecha&&!isNaN(r.fecha));
 
-    const mensajeros=[...new Set(df.map(r=>r.nombreReal))].filter(Boolean).sort();
-    S._liqData={archivo:file.name,df,mapeo,mensajeros};
+    // Agrupar por mensajero para el selector
+    const mensajerosMap={};
+    df.forEach(r=>{
+      const key=r.mensajeroId||r.correoOp||r.operadorRaw;
+      if(!mensajerosMap[key])mensajerosMap[key]={
+        nombre:r.nombreReal,
+        id:r.mensajeroId,
+        correo:r.correoOp,
+        enBD:!!r.mensajeroId
+      };
+    });
+    const mensajeros=Object.values(mensajerosMap).sort((a,b)=>a.nombre.localeCompare(b.nombre));
 
-    document.getElementById('liqFileLabel').textContent='✓ '+file.name+' ('+df.length.toLocaleString()+' registros)';
+    S._liqData={archivo:file.name,df,mensajeros,mensajerosMap};
+
+    document.getElementById('liqFileLabel').textContent=
+      '✓ '+file.name+' ('+df.length.toLocaleString()+' entregas · '+mensajeros.length+' operadores)';
     document.getElementById('liqStep2').style.display='block';
-    // Actualizar selector de mensajeros
+
+    // Actualizar selector
     const sel=document.getElementById('liqMensajero');
-    if(sel)sel.innerHTML=mensajeros.map(m=>`<option value="${esc(m)}">${esc(m)}</option>`).join('');
-    toast('Archivo cargado · '+mensajeros.length+' mensajeros','ok');
+    if(sel)sel.innerHTML=mensajeros.map(m=>
+      `<option value="${esc(m.nombre)}" ${m.enBD?'':'style="color:#f59e0b"'}>
+        ${esc(m.nombre)}${m.enBD?'':' ⚠️ no está en BD'}
+      </option>`
+    ).join('');
+
+    const sinBD=mensajeros.filter(m=>!m.enBD).length;
+    toast('Archivo cargado · '+mensajeros.length+' operadores'+(sinBD?` · ${sinBD} sin match en BD`:''),'ok');
   }catch(e){
     document.getElementById('liqFileLabel').textContent='Error: '+e.message;
     toast('Error: '+e.message,'er');
   }
 }
 
+
 async function liqPreview(){
-  const mensajero=document.getElementById('liqMensajero')?.value;
+  const mensajeroNombre=document.getElementById('liqMensajero')?.value;
   const mes=parseInt(document.getElementById('liqMes')?.value);
   const año=parseInt(document.getElementById('liqAño')?.value);
   const quincena=document.getElementById('liqQuincena')?.value;
-  if(!mensajero||!mes||!año||!quincena){toast('Completa todos los campos','er');return;}
+  if(!mensajeroNombre||!mes||!año||!quincena){toast('Completa todos los campos','er');return;}
 
   const rango=rangoQuincena(mes,año,quincena);
   const df=S._liqData.df;
 
-  // Filtrar registros del mensajero en el período
+  // Obtener mensajeroId desde el mapa cargado en liqHandleFile
+  const mensInfo=Object.values(S._liqData.mensajerosMap||{}).find(m=>m.nombre===mensajeroNombre);
+  const mensDBId=mensInfo?.id||null;
+
+  // Filtrar entregas del mensajero en el período
   const sub=df.filter(r=>{
-    if(r.nombreReal!==mensajero)return false;
+    if(r.nombreReal!==mensajeroNombre)return false;
     const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
     return fd>=rango.desde&&fd<=rango.hasta;
   });
 
-  // Construir resumen por día
+  // Resumen por día
   const diasSet={};
   sub.forEach(r=>{
     const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
@@ -1842,38 +1895,26 @@ async function liqPreview(){
     diasSet[d].paquetes++;
     diasSet[d].valor+=r.valor;
   });
-
-  // Lista completa de días del rango
   const diasRango=[];
-  for(let d=new Date(rango.desde);d<=rango.hasta;d.setDate(d.getDate()+1)){
+  for(let d=new Date(rango.desde);d<=rango.hasta;d.setDate(d.getDate()+1))
     diasRango.push(d.getDate());
-  }
-
   const resumen=diasRango.map(d=>diasSet[d]||{dia:d,paquetes:0,valor:0});
   const totalBruto=resumen.reduce((s,r)=>s+r.valor,0);
-  const diasTrab=resumen.filter(r=>r.paquetes>0).length;
 
-  // Buscar descuentos pendientes del mensajero para esta quincena en Supabase
-  const{data:mensDB}=await sb.from('mensajeros').select('id,nombre_completo').ilike('nombre_completo','%'+mensajero.split(' ')[0]+'%').limit(5);
+  // Descuentos pendientes si hay match en BD
   let descuentosPend=[];
-  let mensDBId=null;
-  if(mensDB?.length){
-    const match=mensDB.find(m=>m.nombre_completo.toLowerCase().includes(mensajero.toLowerCase().split(' ')[0]));
-    if(match){
-      mensDBId=match.id;
-      const{data:descs}=await sb.from('descuentos')
-        .select('id,concepto,valor,tipo,numero_guia,fecha_evento')
-        .eq('mensajero_id',match.id)
-        .eq('mes_quincena',mes).eq('año_quincena',año).eq('quincena',quincena)
-        .eq('aplicado',false);
-      descuentosPend=descs||[];
-    }
+  if(mensDBId){
+    const{data:descs}=await sb.from('descuentos')
+      .select('id,concepto,valor,tipo,numero_guia,fecha_evento')
+      .eq('mensajero_id',mensDBId)
+      .eq('mes_quincena',mes).eq('año_quincena',año).eq('quincena',quincena)
+      .eq('aplicado',false);
+    descuentosPend=descs||[];
   }
   const totalDescuentos=descuentosPend.reduce((s,d)=>s+d.valor,0);
   const totalNeto=totalBruto-totalDescuentos;
 
-  // Guardar estado para generar recibo
-  S._liqPreview={mensajero,mes,año,quincena,resumen,totalBruto,totalDescuentos,totalNeto,descuentosPend,mensDBId};
+  S._liqPreview={mensajero:mensajeroNombre,mes,año,quincena,resumen,totalBruto,totalDescuentos,totalNeto,descuentosPend,mensDBId};
 
   const area=document.getElementById('liqPreviewArea');
   if(!area)return;
@@ -1882,19 +1923,27 @@ async function liqPreview(){
   let html=`
     <div class="sec-title">Resumen · ${MESES_ES[mes]} ${año} · ${quincena}</div>
     <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:10px">${fmtRango(mes,año,quincena)}</div>
+  `;
+
+  if(!mensDBId){
+    html+=`<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:var(--r2);padding:10px 12px;margin-bottom:10px;font-size:var(--fss);color:var(--amb)">
+      ⚠️ Este operador no tiene match en BD. Puedes ver el resumen pero no se guardará el recibo.
+    </div>`;
+  }
+
+  html+=`
     <div class="stat-row">
-      <div class="stat"><div class="stat-n" style="color:var(--acc)">${sub.length}</div><div class="stat-l">Paquetes</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--grn)">${fmtCOP(totalBruto)}</div><div class="stat-l">Bruto</div></div>
-      <div class="stat"><div class="stat-n" style="color:${descuentosPend.length?'var(--red)':'var(--tx3)'}">${fmtCOP(totalDescuentos)}</div><div class="stat-l">Descuentos</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--acc)">${sub.length}</div><div class="stat-l">Entregas</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--grn);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(totalBruto)}</div><div class="stat-l">Bruto</div></div>
+      <div class="stat"><div class="stat-n" style="color:${descuentosPend.length?'var(--red)':'var(--tx3)'};font-size:clamp(13px,3.5vw,15px)">${fmtCOP(totalDescuentos)}</div><div class="stat-l">Descuentos</div></div>
     </div>
     <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.25);border-radius:var(--r2);padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
       <span style="font-weight:600">Total neto</span>
       <span style="font-weight:700;font-size:clamp(18px,5vw,22px);font-family:var(--mo);color:var(--grn)">${fmtCOP(totalNeto)}</span>
     </div>
-
     <div style="max-height:240px;overflow-y:auto;margin-bottom:12px">
       <table class="tbl">
-        <thead><tr><th>Día</th><th>Paquetes</th><th>Valor</th></tr></thead>
+        <thead><tr><th>Día</th><th>Entregas</th><th>Valor</th></tr></thead>
         <tbody>
           ${resumen.filter(r=>r.paquetes>0).map(r=>`
             <tr>
@@ -1920,7 +1969,7 @@ async function liqPreview(){
   html+=`
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn btn-o btn-s" style="flex:1" onclick="go('nomina-desc-individual')">+ Descuento</button>
-      <button class="btn btn-g" style="flex:2" onclick="confirmarLiquidacion()">Generar recibo ✓</button>
+      <button class="btn btn-g" style="flex:2" ${!mensDBId?'disabled':''}  onclick="confirmarLiquidacion()">Generar recibo ✓</button>
     </div>
   `;
   area.innerHTML=html;
