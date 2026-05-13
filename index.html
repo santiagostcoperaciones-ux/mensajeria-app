@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 :root{
   --bg:#0f172a;--bg2:#1e293b;--bg3:#334155;
@@ -1978,7 +1979,7 @@ async function liqPreview(){
 async function confirmarLiquidacion(){
   const p=S._liqPreview;
   if(!p){toast('Sin datos para liquidar','er');return;}
-  if(!p.mensDBId){toast('Mensajero no encontrado en base de datos. Verifica el nombre.','wa');return;}
+  if(!p.mensDBId){toast('Mensajero no encontrado en base de datos.','wa');return;}
 
   dialog(
     'Confirmar liquidación',
@@ -1988,9 +1989,9 @@ async function confirmarLiquidacion(){
       {l:'Cancelar',fn:closeDlg},
       {l:'Confirmar ✓',c:'btn-g',fn:async()=>{
         closeDlg();
-        setP(`<div class="ld"><div class="sp"></div><p style="color:var(--tx2)">Generando recibo...</p></div>`);
+        setP(`<div class="ld"><div class="sp"></div><p style="color:var(--tx2)">Guardando y generando PDF...</p></div>`);
         try{
-          // Insertar liquidación
+          // 1. Guardar liquidación en BD
           const{data:liq,error:lErr}=await sb.from('liquidaciones').insert({
             mensajero_id:p.mensDBId,
             mes:p.mes, año:p.año, quincena:p.quincena,
@@ -2001,7 +2002,7 @@ async function confirmarLiquidacion(){
           }).select().single();
           if(lErr)throw lErr;
 
-          // Aplicar descuentos
+          // 2. Aplicar descuentos pendientes
           if(p.descuentosPend.length){
             await sb.rpc('aplicar_descuentos_liquidacion',{
               p_liquidacion_id:liq.id,
@@ -2010,7 +2011,15 @@ async function confirmarLiquidacion(){
             });
           }
 
-          toast('Recibo generado ✓','ok');
+          // 3. Obtener datos del mensajero para el recibo
+          const{data:mens}=await sb.from('mensajeros')
+            .select('nombre_completo,num_documento,telefono,placa')
+            .eq('id',p.mensDBId).single();
+
+          // 4. Generar PDF
+          generarReciboPDF(p, mens, liq.id);
+
+          toast('Recibo generado y descargado ✓','ok');
           S._liqPreview=null;
           go('nomina-home');
         }catch(e){
@@ -2020,6 +2029,222 @@ async function confirmarLiquidacion(){
       }}
     ]
   );
+}
+
+function generarReciboPDF(p, mens, liqId){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+
+  const PW=210, PH=297;
+  const ML=15, MR=15, MT=15;
+  const CW=PW-ML-MR; // ancho útil
+  let y=MT;
+
+  // ── Colores ──
+  const DARK=[15,23,42];
+  const GRAY=[100,116,139];
+  const LIGHT=[241,245,249];
+  const GREEN=[16,185,129];
+  const RED=[239,68,68];
+  const BLUE=[59,130,246];
+  const WHITE=[255,255,255];
+
+  // ── Helpers ──
+  const setFont=(size,style='normal',color=DARK)=>{
+    doc.setFontSize(size);
+    doc.setFont('helvetica',style);
+    doc.setTextColor(...color);
+  };
+  const rect=(x,y,w,h,color,rounded=2)=>{
+    doc.setFillColor(...color);
+    doc.roundedRect(x,y,w,h,rounded,rounded,'F');
+  };
+  const line=(x1,y1,x2,y2,color=LIGHT,lw=0.3)=>{
+    doc.setDrawColor(...color);
+    doc.setLineWidth(lw);
+    doc.line(x1,y1,x2,y2);
+  };
+  const fmtNum=(v)=>'$'+Number(v||0).toLocaleString('es-CO');
+
+  // ══════════════════════════════════
+  // ENCABEZADO
+  // ══════════════════════════════════
+  rect(0,0,PW,38,DARK,0);
+  setFont(18,'bold',WHITE);
+  doc.text('STC Express',ML,y+10);
+  setFont(9,'normal',[148,163,184]);
+  doc.text('Sistema de Mensajería · Suba, Bogotá',ML,y+17);
+
+  // Etiqueta RECIBO DE PAGO
+  doc.setFillColor(...BLUE);
+  doc.roundedRect(PW-MR-42,y+4,42,13,2,2,'F');
+  setFont(8,'bold',WHITE);
+  doc.text('RECIBO DE PAGO',PW-MR-42+21,y+12,{align:'center'});
+
+  // Número de recibo
+  setFont(7,'normal',[148,163,184]);
+  doc.text(`#${String(liqId||'').slice(0,8).toUpperCase()}`,PW-MR-42+21,y+20,{align:'center'});
+
+  y=42;
+
+  // ══════════════════════════════════
+  // DATOS DEL MENSAJERO
+  // ══════════════════════════════════
+  rect(ML,y,CW,28,[30,41,59],2);
+
+  setFont(11,'bold',WHITE);
+  doc.text(mens?.nombre_completo||p.mensajero, ML+4, y+8);
+
+  setFont(8,'normal',[148,163,184]);
+  const infoItems=[];
+  if(mens?.num_documento) infoItems.push(`CC ${mens.num_documento}`);
+  if(mens?.telefono)       infoItems.push(`📞 ${mens.telefono}`);
+  if(mens?.placa)          infoItems.push(`🏍 ${mens.placa}`);
+  doc.text(infoItems.join('   '), ML+4, y+15);
+
+  setFont(8,'normal',[148,163,184]);
+  const rango=rangoQuincena(p.mes,p.año,p.quincena);
+  const opts={day:'2-digit',month:'long',year:'numeric'};
+  const rangoStr=rango.desde.toLocaleDateString('es-CO',opts)+' – '+rango.hasta.toLocaleDateString('es-CO',opts);
+  doc.text(`Período: ${rangoStr}`, ML+4, y+22);
+
+  // Quincena badge
+  doc.setFillColor(...BLUE);
+  doc.roundedRect(PW-MR-32,y+4,32,10,2,2,'F');
+  setFont(8,'bold',WHITE);
+  doc.text(`${MESES_ES[p.mes]} ${p.año} · ${p.quincena}`,PW-MR-32+16,y+10.5,{align:'center'});
+
+  y+=33;
+
+  // ══════════════════════════════════
+  // RESUMEN TOTALES
+  // ══════════════════════════════════
+  const colW=CW/3;
+  const totales=[
+    {label:'Total Bruto',    value:fmtNum(p.totalBruto),    color:GREEN},
+    {label:'Descuentos',     value:fmtNum(p.totalDescuentos), color:p.totalDescuentos>0?RED:GRAY},
+    {label:'TOTAL NETO',     value:fmtNum(p.totalNeto),     color:GREEN, bold:true},
+  ];
+  totales.forEach((t,i)=>{
+    const x=ML+(i*colW);
+    const bg=t.bold?[16,185,129]:LIGHT;
+    const textCol=t.bold?WHITE:DARK;
+    rect(x+(i>0?2:0), y, colW-(i>0?2:0), 20, bg, 2);
+    setFont(7,'normal', t.bold?[209,250,229]:GRAY);
+    doc.text(t.label, x+(i>0?2:0)+colW/2, y+7, {align:'center'});
+    setFont(t.bold?11:10,'bold', t.bold?WHITE:t.color);
+    doc.text(t.value, x+(i>0?2:0)+colW/2, y+15, {align:'center'});
+  });
+
+  y+=25;
+
+  // ══════════════════════════════════
+  // DETALLE DÍA A DÍA
+  // ══════════════════════════════════
+  setFont(9,'bold',DARK);
+  doc.text('Detalle de entregas',ML,y);
+  y+=5;
+
+  // Cabecera tabla
+  rect(ML,y,CW,7,DARK,1);
+  setFont(7,'bold',WHITE);
+  doc.text('Día',ML+3,y+4.5);
+  doc.text('Fecha',ML+18,y+4.5);
+  doc.text('Entregas',ML+55,y+4.5,{align:'center'});
+  doc.text('Valor',PW-MR-3,y+4.5,{align:'right'});
+  y+=7;
+
+  const diasConEntregas=p.resumen.filter(r=>r.paquetes>0);
+  diasConEntregas.forEach((r,i)=>{
+    const bg=i%2===0?WHITE:[248,250,252];
+    rect(ML,y,CW,6,bg,0);
+    line(ML,y+6,PW-MR,y+6);
+
+    // Construir fecha completa del día
+    const fechaDia=new Date(p.año,p.mes-1,r.dia);
+    const fechaStr=fechaDia.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'});
+
+    setFont(7,'normal',DARK);
+    doc.text(String(r.dia).padStart(2,'0'),ML+3,y+4.2);
+    doc.text(fechaStr,ML+18,y+4.2);
+    setFont(7,'bold',BLUE);
+    doc.text(String(r.paquetes),ML+55,y+4.2,{align:'center'});
+    setFont(7,'normal',GREEN);
+    doc.text(fmtNum(r.valor),PW-MR-3,y+4.2,{align:'right'});
+    y+=6;
+
+    // Nueva página si hace falta
+    if(y>PH-50){
+      doc.addPage();
+      y=MT;
+    }
+  });
+
+  // Total entregas
+  rect(ML,y,CW,7,[30,41,59],1);
+  setFont(7,'bold',WHITE);
+  const totalEntregas=diasConEntregas.reduce((s,r)=>s+r.paquetes,0);
+  doc.text('TOTAL',ML+3,y+4.8);
+  doc.text(String(totalEntregas),ML+55,y+4.8,{align:'center'});
+  doc.text(fmtNum(p.totalBruto),PW-MR-3,y+4.8,{align:'right'});
+  y+=12;
+
+  // ══════════════════════════════════
+  // DESCUENTOS (si hay)
+  // ══════════════════════════════════
+  if(p.descuentosPend.length){
+    if(y>PH-60){doc.addPage();y=MT;}
+
+    setFont(9,'bold',DARK);
+    doc.text('Descuentos aplicados',ML,y);
+    y+=5;
+
+    rect(ML,y,CW,7,[60,20,20],1);
+    setFont(7,'bold',WHITE);
+    doc.text('Concepto',ML+3,y+4.5);
+    doc.text('Guía',ML+80,y+4.5);
+    doc.text('Valor',PW-MR-3,y+4.5,{align:'right'});
+    y+=7;
+
+    p.descuentosPend.forEach((d,i)=>{
+      const bg=i%2===0?[255,248,248]:[255,240,240];
+      rect(ML,y,CW,6,bg,0);
+      line(ML,y+6,PW-MR,y+6,[239,68,68]);
+      setFont(7,'normal',DARK);
+      doc.text(d.concepto.slice(0,45),ML+3,y+4.2);
+      setFont(7,'normal',GRAY);
+      doc.text(d.numero_guia||'—',ML+80,y+4.2);
+      setFont(7,'bold',RED);
+      doc.text(fmtNum(d.valor),PW-MR-3,y+4.2,{align:'right'});
+      y+=6;
+    });
+    y+=4;
+  }
+
+  // ══════════════════════════════════
+  // TOTAL NETO (caja final destacada)
+  // ══════════════════════════════════
+  if(y>PH-35){doc.addPage();y=MT;}
+  rect(ML,y,CW,18,GREEN,3);
+  setFont(8,'normal',WHITE);
+  doc.text('TOTAL A PAGAR',ML+CW/2,y+6,{align:'center'});
+  setFont(16,'bold',WHITE);
+  doc.text(fmtNum(p.totalNeto),ML+CW/2,y+14,{align:'center'});
+  y+=23;
+
+  // ══════════════════════════════════
+  // PIE DE PÁGINA
+  // ══════════════════════════════════
+  const yFoot=PH-12;
+  line(ML,yFoot-3,PW-MR,yFoot-3);
+  setFont(6,'normal',GRAY);
+  const ahora=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  doc.text(`Generado el ${ahora} · STC Express Mensajería`,ML,yFoot);
+  doc.text(`Recibo ${String(liqId||'').slice(0,8).toUpperCase()}`,PW-MR,yFoot,{align:'right'});
+
+  // ── Descargar ──
+  const nombreLimpio=(mens?.nombre_completo||p.mensajero).replace(/\s+/g,'_');
+  doc.save(`Recibo_${nombreLimpio}_${MESES_ES[p.mes]}${p.año}_${p.quincena}.pdf`);
 }
 
 // ── Descuentos — listado y gestión ──
