@@ -2947,6 +2947,13 @@ async function pgUsuarioNuevo(){
     datos=m||{};
   }
 
+  // Cargar usuarios de préstamo disponibles para el selector
+  const{data:disponibles}=await sb.from('usuarios_prestamo')
+    .select('id,nombre,usuario_xcargo,placa')
+    .eq('activo',true)
+    .order('nombre');
+  window._usuariosDisponibles=disponibles||[];
+
   setP(`
     <div style="display:flex;flex-direction:column;gap:10px">
       <div class="sec-title">Datos personales</div>
@@ -2995,9 +3002,18 @@ async function pgUsuarioNuevo(){
           <input class="inp" id="unUsuarioPropio" placeholder="correo@gmail.com" value="${esc(datos.usuario_xcargo||'')}">
         </div>
         <div id="campoXcargoPrestado" style="${datos.usuario_propio===false?'':'display:none'}">
-          <label>Correo usuario xcargo prestado (el que usa en xcargo)</label>
-          <input class="inp" id="unUsuarioPrestado" placeholder="correoprestado@gmail.com" value="${esc(datos.usuario_xcargo_prestado||datos.usuario_xcargo||'')}">
-          <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">Este es el correo que aparece en el reporte xcargo para identificar sus entregas</div>
+          <label>Usuario xcargo prestado</label>
+          <select class="inp sel" id="unUsuarioPrestado">
+            <option value="">— Selecciona un usuario disponible —</option>
+            ${(window._usuariosDisponibles||[]).map(u=>`
+              <option value="${esc(u.usuario_xcargo)}" ${(datos.usuario_xcargo_prestado||datos.usuario_xcargo)===u.usuario_xcargo?'selected':''}>
+                ${esc(u.nombre)} · ${esc(u.usuario_xcargo)}${u.placa?' · '+esc(u.placa):''}
+              </option>`).join('')}
+            ${datos.usuario_xcargo_prestado&&!(window._usuariosDisponibles||[]).find(u=>u.usuario_xcargo===datos.usuario_xcargo_prestado)?
+              `<option value="${esc(datos.usuario_xcargo_prestado)}" selected>${esc(datos.usuario_xcargo_prestado)} (en uso actual)</option>`:''
+            }
+          </select>
+          <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">Solo se muestran usuarios disponibles del pool</div>
         </div>
       </div>
 
