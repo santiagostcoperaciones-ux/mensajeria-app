@@ -2900,13 +2900,20 @@ async function pgUsuarioNuevo(){
       <div class="sec-title" style="margin-top:4px">Acceso xcargo</div>
 
       <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px 14px">
-        <div><label>Usuario xcargo propio</label>
-          <input class="inp" id="unUsuario" placeholder="usuario@email.com" value="${esc(datos.usuario_xcargo||'')}"></div>
-        <div style="margin-top:8px"><label>¿Tiene usuario propio?</label>
-          <select class="inp sel" id="unPropio">
-            <option value="true" ${datos.usuario_propio!==false?'selected':''}>Sí</option>
-            <option value="false" ${datos.usuario_propio===false?'selected':''}>No (usa prestado)</option>
+        <div style="margin-bottom:8px"><label>¿Tiene usuario xcargo propio?</label>
+          <select class="inp sel" id="unPropio" onchange="toggleCampoXcargo()">
+            <option value="true" ${datos.usuario_propio!==false?'selected':''}>Sí — tiene usuario propio</option>
+            <option value="false" ${datos.usuario_propio===false?'selected':''}>No — usa usuario prestado</option>
           </select>
+        </div>
+        <div id="campoXcargoPropio" style="${datos.usuario_propio!==false?'':'display:none'}">
+          <label>Correo usuario xcargo propio</label>
+          <input class="inp" id="unUsuarioPropio" placeholder="correo@gmail.com" value="${esc(datos.usuario_xcargo||'')}">
+        </div>
+        <div id="campoXcargoPrestado" style="${datos.usuario_propio===false?'':'display:none'}">
+          <label>Correo usuario xcargo prestado (el que usa en xcargo)</label>
+          <input class="inp" id="unUsuarioPrestado" placeholder="correoprestado@gmail.com" value="${esc(datos.usuario_xcargo_prestado||datos.usuario_xcargo||'')}">
+          <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">Este es el correo que aparece en el reporte xcargo para identificar sus entregas</div>
         </div>
       </div>
 
@@ -2916,6 +2923,14 @@ async function pgUsuarioNuevo(){
       ${esEdicion?`<button class="btn btn-o btn-w btn-s" onclick="S._userEditId=null;go('usuarios')">Cancelar</button>`:''}
     </div>
   `);
+}
+
+function toggleCampoXcargo(){
+  const propio=document.getElementById('unPropio')?.value==='true';
+  const elPropio=document.getElementById('campoXcargoPropio');
+  const elPrest=document.getElementById('campoXcargoPrestado');
+  if(elPropio)elPropio.style.display=propio?'block':'none';
+  if(elPrest)elPrest.style.display=propio?'none':'block';
 }
 
 async function guardarUsuario(){
@@ -2928,8 +2943,11 @@ async function guardarUsuario(){
   const placa=document.getElementById('unPlaca')?.value?.trim().toUpperCase()||null;
   const zona=document.getElementById('unZona')?.value||null;
   const fechaIngreso=document.getElementById('unFechaIngreso')?.value||null;
-  const usuarioXcargo=document.getElementById('unUsuario')?.value?.trim()||null;
   const usuarioPropio=document.getElementById('unPropio')?.value==='true';
+  // Si tiene usuario propio → guardar en usuario_xcargo y limpiar prestado
+  // Si usa prestado → guardar en usuario_xcargo_prestado y limpiar propio
+  const usuarioXcargo       = usuarioPropio ? (document.getElementById('unUsuarioPropio')?.value?.trim().toLowerCase()||null) : null;
+  const usuarioXcargoPrest  = usuarioPropio ? null : (document.getElementById('unUsuarioPrestado')?.value?.trim().toLowerCase()||null);
 
   if(!nombre){toast('El nombre es obligatorio','er');return;}
 
@@ -2943,6 +2961,7 @@ async function guardarUsuario(){
     zona_principal:zona,
     fecha_ingreso:fechaIngreso||null,
     usuario_xcargo:usuarioXcargo,
+    usuario_xcargo_prestado:usuarioXcargoPrest,
     usuario_propio:usuarioPropio,
   };
 
