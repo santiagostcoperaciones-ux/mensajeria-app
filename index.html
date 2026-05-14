@@ -2032,8 +2032,8 @@ async function confirmarLiquidacion(){
 }
 
 function generarReciboPDF(p, mens, liqId){
-  // Número de recibo legible: últimos 8 caracteres del UUID sin guiones
-  const reciboNum=String(liqId||'').replace(/-/g,'').slice(-8).toUpperCase();
+  // Número de recibo legible: MES-AÑO-QUINCENA
+  const reciboNum=`${String(p.mes).padStart(2,'0')}${p.año}-${p.quincena==='Primera quincena'?'Q1':'Q2'}`;
 
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
