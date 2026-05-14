@@ -2723,7 +2723,7 @@ async function pgUsuarios(){
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
             <span class="b ${p.activo?'b-gr':'b-am'}">${p.activo?'Disponible':'En uso'}</span>
-            ${p.clave_enc?`<button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">Ver clave</button>`:''}
+            <button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">${p.clave_enc?'Ver clave':'🔑 Sin clave'}</button>
           </div>
         </div>
       </div>`;
@@ -3393,7 +3393,7 @@ async function verClavePrestamo(prestamoId, nombreUsuario){
     const{error:authErr}=await sb.auth.signInWithPassword({email:S.user?.email,password:pwd});
     if(authErr){toast('Contraseña incorrecta','er');return;}
     const{data:p}=await sb.from('usuarios_prestamo').select('clave_enc,usuario_xcargo,nombre').eq('id',prestamoId).single();
-    if(!p?.clave_enc){toast('No hay clave guardada','wa');return;}
+    if(!p?.clave_enc){toast('Sin clave guardada — reimporta el Excel de usuarios para cargarla','wa');return;}
     const claveDesc=await decryptText(p.clave_enc);
     if(!claveDesc){toast('Error al descifrar','er');return;}
     mostrarClaveDialog(p.nombre, p.usuario_xcargo||'—', claveDesc);
