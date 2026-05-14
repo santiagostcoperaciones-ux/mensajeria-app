@@ -2662,8 +2662,11 @@ async function pgUsuarios(){
 
   const [{data:mensajeros},{data:prestamos}]=await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,fecha_retiro,created_at').order('activo',{ascending:false}).order('nombre_completo'),
-    sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo').order('nombre'),
+    sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo,clave_enc').order('nombre'),
   ]);
+
+  const activos=(mensajeros||[]).filter(m=>m.activo);
+  const retirados=(mensajeros||[]).filter(m=>!m.activo);
 
   // Búsqueda en cliente
   const busqId='uBusq_'+Date.now();
@@ -2672,22 +2675,19 @@ async function pgUsuarios(){
       <input class="inp" id="${busqId}" placeholder="Buscar por nombre o documento..." oninput="filtrarUsuarios(this.value)" style="flex:1">
     </div>
     <div class="seg" style="margin-bottom:12px">
-      <button class="seg-btn on" id="tabMensajeros" onclick="switchTabUsuarios('mensajeros')">Mensajeros (${(mensajeros||[]).length})</button>
+      <button class="seg-btn on" id="tabActivos" onclick="switchTabUsuarios('activos')">Activos (${activos.length})</button>
       <button class="seg-btn" id="tabPrestamos" onclick="switchTabUsuarios('prestamos')">Préstamo (${(prestamos||[]).length})</button>
+      <button class="seg-btn" id="tabRetirados" onclick="switchTabUsuarios('retirados')">Retirados (${retirados.length})</button>
     </div>
     <div id="usuariosContent">
   `;
 
-  // Tab mensajeros
-  h+=`<div id="tabContentMensajeros">`;
-  if(!mensajeros?.length){
-    h+=`<div style="text-align:center;padding:30px 14px">
-      <div style="font-size:32px;margin-bottom:10px">👥</div>
-      <p style="font-weight:600;margin-bottom:4px">Sin mensajeros registrados</p>
-      <button class="btn btn-p btn-s" style="margin-top:8px" onclick="go('usuario-nuevo')">+ Agregar</button>
-    </div>`;
+  // ── Tab activos ──
+  h+=`<div id="tabContentActivos">`;
+  if(!activos.length){
+    h+=`<p class="empty">Sin mensajeros activos</p>`;
   } else {
-    (mensajeros||[]).forEach(m=>{
+    activos.forEach(m=>{
       h+=`<div class="card usuario-card" data-search="${esc((m.nombre_completo+' '+(m.num_documento||'')).toLowerCase())}" onclick="S._userId='${m.id}';S._userNombre='${esc(m.nombre_completo)}';go('usuario-detalle')">
         <div class="card-row">
           <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur);font-weight:700;font-size:15px;font-family:var(--mo)">
@@ -2695,15 +2695,11 @@ async function pgUsuarios(){
           </div>
           <div style="flex:1;min-width:0">
             <div class="ct">${esc(m.nombre_completo)}</div>
-            <div class="cs">
-              ${m.num_documento?'CC '+esc(m.num_documento)+' · ':''}
-              ${m.telefono?'📞 '+esc(m.telefono):'Sin teléfono'}
-              ${m.placa?' · 🏍 '+esc(m.placa):''}
-            </div>
+            <div class="cs">${m.num_documento?'CC '+esc(m.num_documento)+' · ':''}${m.telefono?'📞 '+esc(m.telefono):'Sin teléfono'}${m.placa?' · 🏍 '+esc(m.placa):''}</div>
             ${m.usuario_xcargo?`<div style="font-size:var(--fss);color:var(--tx3);margin-top:1px">xcargo: ${esc(m.usuario_xcargo)}</div>`:''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-            <span class="b ${m.activo?'b-gr':'b-gy'}">${m.activo?'Activo':'Retirado'}</span>
+            <span class="b b-gr">Activo</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
           </div>
         </div>
@@ -2712,7 +2708,7 @@ async function pgUsuarios(){
   }
   h+=`</div>`;
 
-  // Tab préstamos
+  // ── Tab préstamos ──
   h+=`<div id="tabContentPrestamos" style="display:none">`;
   if(!prestamos?.length){
     h+=`<p class="empty">Sin usuarios de préstamo registrados</p>`;
@@ -2723,9 +2719,38 @@ async function pgUsuarios(){
           <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">🔑</div>
           <div style="flex:1;min-width:0">
             <div class="ct">${esc(p.nombre)}</div>
-            <div class="cs">${esc(p.usuario_xcargo||'—')} · ${p.placa?'🏍 '+esc(p.placa):''}</div>
+            <div class="cs">${esc(p.usuario_xcargo||'—')}${p.placa?' · 🏍 '+esc(p.placa):''}</div>
           </div>
-          <span class="b ${p.activo?'b-gr':'b-gy'}">${p.activo?'Activo':'Inactivo'}</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
+            <span class="b ${p.activo?'b-gr':'b-am'}">${p.activo?'Disponible':'En uso'}</span>
+            ${p.clave_enc?`<button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">Ver clave</button>`:''}
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`</div>`;
+
+  // ── Tab retirados ──
+  h+=`<div id="tabContentRetirados" style="display:none">`;
+  if(!retirados.length){
+    h+=`<p class="empty">Sin mensajeros retirados</p>`;
+  } else {
+    retirados.forEach(m=>{
+      h+=`<div class="card usuario-card" data-search="${esc((m.nombre_completo+' '+(m.num_documento||'')).toLowerCase())}" onclick="S._userId='${m.id}';S._userNombre='${esc(m.nombre_completo)}';go('usuario-detalle')">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(100,116,139,.12);color:var(--tx3);font-weight:700;font-size:15px;font-family:var(--mo)">
+            ${m.placa?esc(m.placa.slice(0,3)):'👤'}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div class="ct" style="color:var(--tx2)">${esc(m.nombre_completo)}</div>
+            <div class="cs">${m.num_documento?'CC '+esc(m.num_documento)+' · ':''}${m.placa?'🏍 '+esc(m.placa):''}</div>
+            ${m.fecha_retiro?`<div style="font-size:var(--fss);color:var(--tx3)">Retirado: ${fmtDate(m.fecha_retiro)}</div>`:''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+            <span class="b b-gy">Retirado</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
+          </div>
         </div>
       </div>`;
     });
@@ -2756,10 +2781,12 @@ async function pgUsuarios(){
 }
 
 function switchTabUsuarios(tab){
-  document.getElementById('tabContentMensajeros').style.display=tab==='mensajeros'?'block':'none';
+  document.getElementById('tabContentActivos').style.display=tab==='activos'?'block':'none';
   document.getElementById('tabContentPrestamos').style.display=tab==='prestamos'?'block':'none';
-  document.getElementById('tabMensajeros').classList.toggle('on',tab==='mensajeros');
+  document.getElementById('tabContentRetirados').style.display=tab==='retirados'?'block':'none';
+  document.getElementById('tabActivos').classList.toggle('on',tab==='activos');
   document.getElementById('tabPrestamos').classList.toggle('on',tab==='prestamos');
+  document.getElementById('tabRetirados').classList.toggle('on',tab==='retirados');
 }
 
 function filtrarUsuarios(q){
@@ -3273,17 +3300,19 @@ async function usuDoImport(){
     if(!nombre){errores.push('Fila préstamo sin nombre, se omitió');continue;}
     const usuario=String(r['USUARIO']||'').trim().toLowerCase()||null;
     const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
+    const claveRawP=String(r['CONTRASEÑA']||'').trim()||null;
+    const claveEncP=claveRawP?await encryptText(claveRawP):null;
     try{
       let error;
       if(usuario){
         const{data:existe}=await sb.from('usuarios_prestamo').select('id').eq('usuario_xcargo',usuario).maybeSingle();
         if(existe){
-          ({error}=await sb.from('usuarios_prestamo').update({nombre,placa,activo:true}).eq('id',existe.id));
+          ({error}=await sb.from('usuarios_prestamo').update({nombre,placa,activo:true,clave_enc:claveEncP}).eq('id',existe.id));
         } else {
-          ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:usuario,placa,activo:true}));
+          ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:usuario,placa,activo:true,clave_enc:claveEncP}));
         }
       } else {
-        ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:null,placa,activo:true}));
+        ({error}=await sb.from('usuarios_prestamo').insert({nombre,usuario_xcargo:null,placa,activo:true,clave_enc:claveEncP}));
       }
       if(error)throw error;
       okPrest++;
@@ -3312,77 +3341,98 @@ async function usuDoImport(){
 
 // ── Ver clave xcargo (solo admin con reautenticación) ──
 async function verClaveXcargo(mensajeroId, nombreMensajero){
-  // Pedir contraseña del admin para reautenticar
-  dialog(
-    'Verificación requerida',
-    `Para ver la clave de ${nombreMensajero} debes confirmar tu contraseña de acceso.`,
-    `<div style="margin-top:10px">
-      <input class="inp" id="dlgReauthPwd" type="password" placeholder="Tu contraseña de acceso" autocomplete="current-password">
-    </div>`,
-    [
-      {l:'Cancelar', fn:closeDlg},
-      {l:'Confirmar', c:'btn-p', fn:async()=>{
-        const pwd=document.getElementById('dlgReauthPwd')?.value||'';
-        if(!pwd){toast('Ingresa tu contraseña','er');return;}
-        closeDlg();
+  // Abrir diálogo custom con input de contraseña
+  const dlg=document.getElementById('dlg');
+  document.getElementById('dlgT').textContent='Verificación requerida';
+  document.getElementById('dlgM').textContent=`Para ver la clave de ${nombreMensajero} confirma tu contraseña de acceso.`;
+  const gEl=document.getElementById('dlgG');
+  gEl.innerHTML=`<input class="inp" id="dlgReauthPwd" type="password" placeholder="Tu contraseña" autocomplete="current-password" style="margin-top:8px">`;
+  gEl.style.display='block';
+  const aEl=document.getElementById('dlgA');
+  aEl.innerHTML='';
+  const btnCancel=document.createElement('button');
+  btnCancel.className='btn btn-o btn-s';btnCancel.textContent='Cancelar';
+  btnCancel.onclick=closeDlg;
+  const btnOk=document.createElement('button');
+  btnOk.className='btn btn-p btn-s';btnOk.textContent='Confirmar';
+  btnOk.onclick=async()=>{
+    const pwd=document.getElementById('dlgReauthPwd')?.value||'';
+    if(!pwd){toast('Ingresa tu contraseña','er');return;}
+    closeDlg();
+    const email=S.user?.email;
+    const{error:authErr}=await sb.auth.signInWithPassword({email,password:pwd});
+    if(authErr){toast('Contraseña incorrecta','er');return;}
+    // Obtener clave encriptada
+    const{data:m}=await sb.from('mensajeros').select('clave_enc,usuario_xcargo').eq('id',mensajeroId).single();
+    if(!m?.clave_enc){toast('No hay clave guardada','wa');return;}
+    const claveDesc=await decryptText(m.clave_enc);
+    if(!claveDesc){toast('Error al descifrar','er');return;}
+    mostrarClaveDialog(nombreMensajero, m.usuario_xcargo||'—', claveDesc);
+  };
+  aEl.appendChild(btnCancel);aEl.appendChild(btnOk);
+  dlg.classList.add('open');
+  setTimeout(()=>document.getElementById('dlgReauthPwd')?.focus(),150);
+}
 
-        // Reautenticar con Supabase usando el email del admin actual
-        const email=S.user?.email;
-        const{error:authErr}=await sb.auth.signInWithPassword({email,password:pwd});
-        if(authErr){
-          toast('Contraseña incorrecta','er');
-          return;
-        }
+async function verClavePrestamo(prestamoId, nombreUsuario){
+  const dlg=document.getElementById('dlg');
+  document.getElementById('dlgT').textContent='Verificación requerida';
+  document.getElementById('dlgM').textContent=`Para ver la clave de ${nombreUsuario} confirma tu contraseña.`;
+  const gEl=document.getElementById('dlgG');
+  gEl.innerHTML=`<input class="inp" id="dlgReauthPwd2" type="password" placeholder="Tu contraseña" autocomplete="current-password" style="margin-top:8px">`;
+  gEl.style.display='block';
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  const btnCancel=document.createElement('button');
+  btnCancel.className='btn btn-o btn-s';btnCancel.textContent='Cancelar';btnCancel.onclick=closeDlg;
+  const btnOk=document.createElement('button');
+  btnOk.className='btn btn-p btn-s';btnOk.textContent='Confirmar';
+  btnOk.onclick=async()=>{
+    const pwd=document.getElementById('dlgReauthPwd2')?.value||'';
+    if(!pwd){toast('Ingresa tu contraseña','er');return;}
+    closeDlg();
+    const{error:authErr}=await sb.auth.signInWithPassword({email:S.user?.email,password:pwd});
+    if(authErr){toast('Contraseña incorrecta','er');return;}
+    const{data:p}=await sb.from('usuarios_prestamo').select('clave_enc,usuario_xcargo,nombre').eq('id',prestamoId).single();
+    if(!p?.clave_enc){toast('No hay clave guardada','wa');return;}
+    const claveDesc=await decryptText(p.clave_enc);
+    if(!claveDesc){toast('Error al descifrar','er');return;}
+    mostrarClaveDialog(p.nombre, p.usuario_xcargo||'—', claveDesc);
+  };
+  aEl.appendChild(btnCancel);aEl.appendChild(btnOk);
+  dlg.classList.add('open');
+  setTimeout(()=>document.getElementById('dlgReauthPwd2')?.focus(),150);
+}
 
-        // Obtener clave encriptada
-        const{data:m}=await sb.from('mensajeros')
-          .select('clave_enc,usuario_xcargo')
-          .eq('id',mensajeroId).single();
-
-        if(!m?.clave_enc){toast('No hay clave guardada para este mensajero','wa');return;}
-
-        const claveDesc=await decryptText(m.clave_enc);
-        if(!claveDesc){toast('Error al descifrar la clave','er');return;}
-
-        // Mostrar clave por 30 segundos con countdown
-        let seg=30;
-        const mostrarDialog=()=>{
-          dialog(
-            'Clave xcargo',
-            `${nombreMensajero}`,
-            `<div style="margin-top:10px">
-              <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:6px">Usuario</div>
-              <div style="font-family:var(--mo);background:var(--bg);padding:8px 12px;border-radius:var(--r2);margin-bottom:12px;word-break:break-all">${esc(m.usuario_xcargo||'—')}</div>
-              <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:6px">Contraseña</div>
-              <div style="font-family:var(--mo);font-size:18px;background:var(--bg);padding:10px 12px;border-radius:var(--r2);letter-spacing:2px;display:flex;align-items:center;justify-content:space-between">
-                <span id="claveVisible">${esc(claveDesc)}</span>
-                <button onclick="navigator.clipboard.writeText('${esc(claveDesc)}').then(()=>toast('Copiado','ok'))" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:12px;padding:0 4px">Copiar</button>
-              </div>
-              <div style="margin-top:10px;font-size:var(--fss);color:var(--tx3);text-align:center">
-                Se ocultará en <span id="claveCountdown">${seg}</span>s
-              </div>
-            </div>`,
-            [{l:'Cerrar', fn:()=>{clearInterval(window._claveTimer);closeDlg();}}]
-          );
-        };
-        mostrarDialog();
-
-        // Countdown de 30 segundos
-        window._claveTimer=setInterval(()=>{
-          seg--;
-          const el=document.getElementById('claveCountdown');
-          if(el) el.textContent=seg;
-          if(seg<=0){
-            clearInterval(window._claveTimer);
-            closeDlg();
-            toast('Clave ocultada automáticamente','ok');
-          }
-        },1000);
-      }}
-    ]
-  );
-  // Focus automático en el campo de contraseña
-  setTimeout(()=>document.getElementById('dlgReauthPwd')?.focus(),100);
+function mostrarClaveDialog(nombre, usuario, clave){
+  let seg=30;
+  const dlg=document.getElementById('dlg');
+  document.getElementById('dlgT').textContent='Clave xcargo';
+  document.getElementById('dlgM').textContent=nombre;
+  const gEl=document.getElementById('dlgG');
+  gEl.innerHTML=`
+    <div style="margin-top:4px">
+      <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:4px">Usuario</div>
+      <div style="font-family:var(--mo);background:var(--bg);padding:8px 10px;border-radius:var(--r2);margin-bottom:10px;word-break:break-all;font-size:var(--fsm)">${esc(usuario)}</div>
+      <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:4px">Contraseña</div>
+      <div style="font-family:var(--mo);background:var(--bg);padding:10px 12px;border-radius:var(--r2);display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span style="font-size:16px;letter-spacing:1px;word-break:break-all">${esc(clave)}</span>
+        <button onclick="navigator.clipboard.writeText('${esc(clave)}').then(()=>toast('Copiado ✓','ok'))" style="background:rgba(59,130,246,.15);border:none;color:var(--acc);cursor:pointer;font-size:11px;padding:4px 8px;border-radius:6px;flex-shrink:0">Copiar</button>
+      </div>
+      <div style="margin-top:10px;text-align:center;font-size:var(--fss);color:var(--tx3)">Se oculta en <span id="claveCountdown">${seg}</span>s</div>
+    </div>`;
+  gEl.style.display='block';
+  const aEl=document.getElementById('dlgA');aEl.innerHTML='';
+  const btnCerrar=document.createElement('button');
+  btnCerrar.className='btn btn-o btn-s';btnCerrar.textContent='Cerrar';
+  btnCerrar.onclick=()=>{clearInterval(window._claveTimer);closeDlg();};
+  aEl.appendChild(btnCerrar);
+  dlg.classList.add('open');
+  window._claveTimer=setInterval(()=>{
+    seg--;
+    const el=document.getElementById('claveCountdown');
+    if(el)el.textContent=seg;
+    if(seg<=0){clearInterval(window._claveTimer);closeDlg();toast('Clave ocultada','ok');}
+  },1000);
 }
 
 // ══════════════════════════════════════════════════════════════════
