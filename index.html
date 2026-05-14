@@ -167,6 +167,44 @@ const SUPABASE_URL='https://vqdepoedhhhggqzmazie.supabase.co';
 const SUPABASE_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxZGVwb2VkaGhoZ2dxem1hemllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0OTM4MzIsImV4cCI6MjA5MzA2OTgzMn0.B5kuBgcIHFnrFCMAD96VwIb6cbTu5eOZVdYhDrLMeV8';
 const sb=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
+// ── Clave maestra de encriptación (cambia esto por una clave segura tuya) ──
+// Esta clave NUNCA se guarda en la BD — solo existe en el código
+const MASTER_KEY='STC-Express-2026-MasterKey#Suba!';
+
+// ── Utilidades AES-256-GCM ──
+async function getAesKey(){
+  const enc=new TextEncoder();
+  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(MASTER_KEY),{name:'PBKDF2'},false,['deriveKey']);
+  return crypto.subtle.deriveKey(
+    {name:'PBKDF2',salt:enc.encode('stc-salt-v1'),iterations:100000,hash:'SHA-256'},
+    keyMaterial,{name:'AES-GCM',length:256},false,['encrypt','decrypt']
+  );
+}
+
+async function encryptText(plain){
+  if(!plain)return null;
+  const key=await getAesKey();
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const enc=new TextEncoder();
+  const cipher=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(plain));
+  // Combinar iv + cifrado en base64
+  const combined=new Uint8Array(iv.byteLength+cipher.byteLength);
+  combined.set(iv,0);combined.set(new Uint8Array(cipher),iv.byteLength);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptText(b64){
+  if(!b64)return null;
+  try{
+    const key=await getAesKey();
+    const combined=Uint8Array.from(atob(b64),c=>c.charCodeAt(0));
+    const iv=combined.slice(0,12);
+    const cipher=combined.slice(12);
+    const plain=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,cipher);
+    return new TextDecoder().decode(plain);
+  }catch(e){return null;}
+}
+
 const S={
   user:null,profile:null,stack:[],
   mensajeros:[],
@@ -2810,7 +2848,10 @@ async function pgUsuarioDetalle(){
 
       ${m.usuario_xcargo?`<div style="margin-top:8px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
         <div style="color:var(--tx3);margin-bottom:2px">Usuario xcargo propio</div>
-        <div style="font-family:var(--mo);color:var(--acc)">${esc(m.usuario_xcargo)}</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div style="font-family:var(--mo);color:var(--acc)">${esc(m.usuario_xcargo)}</div>
+          ${m.clave_enc?`<button class="btn btn-o" style="font-size:10px;padding:3px 10px;height:auto" onclick="verClaveXcargo('${userId}','${esc(m.nombre_completo)}')">Ver clave</button>`:'<span style="color:var(--tx3)">Sin clave guardada</span>'}
+        </div>
       </div>`:''}
 
       ${m.usuario_xcargo_prestado?`<div style="margin-top:8px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
@@ -3158,6 +3199,8 @@ async function usuDoImport(){
     const dir=String(r['DIRECCION']||'').trim()||null;
     const correo=String(r['Correo']||'').trim().toLowerCase()||null;
     const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
+    const claveRaw=String(r['CONTRASEÑA']||'').trim()||null;
+    const claveEnc=claveRaw ? await encryptText(claveRaw) : null;
     const usuarioPropio=String(r['USUARIO PROPIO']||'').trim().toUpperCase()==='SI';
     const usuarioActual=String(r['USUARIO ACTUAL']||'').trim().toLowerCase()||null;
     const usuarioXcargo      = usuarioPropio ? (usuarioActual||correo) : null;
@@ -3200,13 +3243,13 @@ async function usuDoImport(){
           ({error}=await sb.from('mensajeros').update({
             nombre_completo:nombre,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
           }).eq('id',existe.id));
         } else {
           ({error}=await sb.from('mensajeros').insert({
             nombre_completo:nombre,num_documento:doc,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
           }));
         }
       } else {
@@ -3214,7 +3257,7 @@ async function usuDoImport(){
         ({error}=await sb.from('mensajeros').insert({
           nombre_completo:nombre,num_documento:null,telefono:tel,direccion:dir,correo,placa,
           fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
+          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
         }));
       }
       if(error)throw error;
@@ -3265,6 +3308,81 @@ async function usuDoImport(){
     ${(okMens>0||okPrest>0)?`<button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('usuarios')">Ver usuarios →</button>`:''}
   `;
   if(okMens>0||okPrest>0)toast(`${okMens+okPrest} usuarios importados ✓`,'ok');
+}
+
+// ── Ver clave xcargo (solo admin con reautenticación) ──
+async function verClaveXcargo(mensajeroId, nombreMensajero){
+  // Pedir contraseña del admin para reautenticar
+  dialog(
+    'Verificación requerida',
+    `Para ver la clave de ${nombreMensajero} debes confirmar tu contraseña de acceso.`,
+    `<div style="margin-top:10px">
+      <input class="inp" id="dlgReauthPwd" type="password" placeholder="Tu contraseña de acceso" autocomplete="current-password">
+    </div>`,
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Confirmar', c:'btn-p', fn:async()=>{
+        const pwd=document.getElementById('dlgReauthPwd')?.value||'';
+        if(!pwd){toast('Ingresa tu contraseña','er');return;}
+        closeDlg();
+
+        // Reautenticar con Supabase usando el email del admin actual
+        const email=S.user?.email;
+        const{error:authErr}=await sb.auth.signInWithPassword({email,password:pwd});
+        if(authErr){
+          toast('Contraseña incorrecta','er');
+          return;
+        }
+
+        // Obtener clave encriptada
+        const{data:m}=await sb.from('mensajeros')
+          .select('clave_enc,usuario_xcargo')
+          .eq('id',mensajeroId).single();
+
+        if(!m?.clave_enc){toast('No hay clave guardada para este mensajero','wa');return;}
+
+        const claveDesc=await decryptText(m.clave_enc);
+        if(!claveDesc){toast('Error al descifrar la clave','er');return;}
+
+        // Mostrar clave por 30 segundos con countdown
+        let seg=30;
+        const mostrarDialog=()=>{
+          dialog(
+            'Clave xcargo',
+            `${nombreMensajero}`,
+            `<div style="margin-top:10px">
+              <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:6px">Usuario</div>
+              <div style="font-family:var(--mo);background:var(--bg);padding:8px 12px;border-radius:var(--r2);margin-bottom:12px;word-break:break-all">${esc(m.usuario_xcargo||'—')}</div>
+              <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:6px">Contraseña</div>
+              <div style="font-family:var(--mo);font-size:18px;background:var(--bg);padding:10px 12px;border-radius:var(--r2);letter-spacing:2px;display:flex;align-items:center;justify-content:space-between">
+                <span id="claveVisible">${esc(claveDesc)}</span>
+                <button onclick="navigator.clipboard.writeText('${esc(claveDesc)}').then(()=>toast('Copiado','ok'))" style="background:none;border:none;color:var(--acc);cursor:pointer;font-size:12px;padding:0 4px">Copiar</button>
+              </div>
+              <div style="margin-top:10px;font-size:var(--fss);color:var(--tx3);text-align:center">
+                Se ocultará en <span id="claveCountdown">${seg}</span>s
+              </div>
+            </div>`,
+            [{l:'Cerrar', fn:()=>{clearInterval(window._claveTimer);closeDlg();}}]
+          );
+        };
+        mostrarDialog();
+
+        // Countdown de 30 segundos
+        window._claveTimer=setInterval(()=>{
+          seg--;
+          const el=document.getElementById('claveCountdown');
+          if(el) el.textContent=seg;
+          if(seg<=0){
+            clearInterval(window._claveTimer);
+            closeDlg();
+            toast('Clave ocultada automáticamente','ok');
+          }
+        },1000);
+      }}
+    ]
+  );
+  // Focus automático en el campo de contraseña
+  setTimeout(()=>document.getElementById('dlgReauthPwd')?.focus(),100);
 }
 
 // ══════════════════════════════════════════════════════════════════
