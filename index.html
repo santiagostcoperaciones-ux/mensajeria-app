@@ -1787,15 +1787,17 @@ async function liqHandleFile(file){
 
     // Cargar mensajeros — dos mapas: correo propio y correo xcargo prestado
     const{data:mensDB}=await sb.from('mensajeros')
-      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio')
+      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario')
       .eq('activo',true);
 
     const mensMapCorreo={};    // correo propio → mensajero (usuario_propio=true)
     const mensMapPrestado={};  // usuario_xcargo_prestado → mensajero (usuario_propio=false)
+    const mensMapAnterior={};  // usuario_xcargo_anterior → {mensajero, fechaCorte} (cambió de usuario)
     const mensMapCedula={};    // num_documento → mensajero (fallback)
     (mensDB||[]).forEach(m=>{
       if(m.correo) mensMapCorreo[m.correo.trim().toLowerCase()]=m;
       if(m.usuario_xcargo_prestado) mensMapPrestado[m.usuario_xcargo_prestado.trim().toLowerCase()]=m;
+      if(m.usuario_xcargo_anterior) mensMapAnterior[m.usuario_xcargo_anterior.trim().toLowerCase()]={m, fechaCorte: m.fecha_cambio_usuario ? new Date(m.fecha_cambio_usuario) : null};
       if(m.num_documento) mensMapCedula[String(m.num_documento).trim()]=m;
     });
 
@@ -1814,10 +1816,20 @@ async function liqHandleFile(file){
         const correoOp=String(r['Correo operador']||'').trim().toLowerCase();
         let mensajeroDB=correoOp?mensMapCorreo[correoOp]:null;
 
-        // Match 2: por usuario xcargo prestado — cuando el correo del reporte es el del usuario prestado
-        if(!mensajeroDB&&correoOp)mensajeroDB=mensMapPrestado[correoOp]||null;
+        // Match 2: por usuario xcargo prestado actual
+        if(!mensajeroDB&&correoOp) mensajeroDB=mensMapPrestado[correoOp]||null;
 
-        // Match 3 (fallback): por cédula del campo Nombre operador "1023456789 BTA Nombre..."
+        // Match 3: por usuario anterior — solo si la entrega es ANTES de la fecha de cambio
+        if(!mensajeroDB&&correoOp&&mensMapAnterior[correoOp]){
+          const{m, fechaCorte}=mensMapAnterior[correoOp];
+          // Si no hay fecha de corte o la entrega es anterior al corte → asignar al mensajero
+          let fechaEntrega=r['Fecha y hora de salida'];
+          if(typeof fechaEntrega==='number'){const d=XLSX.SSF.parse_date_code(fechaEntrega);fechaEntrega=new Date(d.y,d.m-1,d.d);}
+          else if(!(fechaEntrega instanceof Date)) fechaEntrega=new Date(String(fechaEntrega));
+          if(!fechaCorte||fechaEntrega<=fechaCorte) mensajeroDB=m;
+        }
+
+        // Match 4 (fallback): por cédula del campo Nombre operador
         const operadorRaw=String(r['Nombre operador']||'').trim();
         if(!mensajeroDB){
           const cedula=operadorRaw.match(/^(\d+)/)?.[1]||null;
@@ -3068,11 +3080,23 @@ async function usuDoImport(){
     const correo=String(r['Correo']||'').trim().toLowerCase()||null;
     const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
     const usuarioPropio=String(r['USUARIO PROPIO']||'').trim().toUpperCase()==='SI';
-    // Si tiene usuario propio → USUARIO ACTUAL es su correo propio (mismo que Correo)
-    // Si NO tiene usuario propio → USUARIO ACTUAL es el correo prestado del pool
     const usuarioActual=String(r['USUARIO ACTUAL']||'').trim().toLowerCase()||null;
     const usuarioXcargo      = usuarioPropio ? (usuarioActual||correo) : null;
     const usuarioXcargoPrest = usuarioPropio ? null : usuarioActual;
+    // Usuario anterior y fecha de cambio (para mensajeros que cambiaron de usuario)
+    const usuarioAnteriorRaw=String(r['USUARIO ANTERIOR']||'').trim().toLowerCase()||null;
+    const usuarioAnterior = usuarioAnteriorRaw||null;
+    let fechaCambio=null;
+    const fechaCambioRaw=r['FECHA DE CAMBIO A USUARIO ACTUAL'];
+    if(fechaCambioRaw){
+      if(typeof fechaCambioRaw==='number'){
+        try{const d=XLSX.SSF.parse_date_code(fechaCambioRaw);fechaCambio=`${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`;}catch(e){}
+      } else if(typeof fechaCambioRaw==='string'&&fechaCambioRaw.trim()){
+        fechaCambio=fechaCambioRaw.trim().slice(0,10);
+      } else if(fechaCambioRaw instanceof Date){
+        fechaCambio=fechaCambioRaw.toISOString().slice(0,10);
+      }
+    }
 
     // Fecha de ingreso — puede ser número serial Excel o texto
     let fechaIngreso=null;
@@ -3097,13 +3121,13 @@ async function usuDoImport(){
           ({error}=await sb.from('mensajeros').update({
             nombre_completo:nombre,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
           }).eq('id',existe.id));
         } else {
           ({error}=await sb.from('mensajeros').insert({
             nombre_completo:nombre,num_documento:doc,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
           }));
         }
       } else {
@@ -3111,7 +3135,7 @@ async function usuDoImport(){
         ({error}=await sb.from('mensajeros').insert({
           nombre_completo:nombre,num_documento:null,telefono:tel,direccion:dir,correo,placa,
           fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
+          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,activo:true
         }));
       }
       if(error)throw error;
