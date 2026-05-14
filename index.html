@@ -2623,7 +2623,7 @@ async function pgUsuarios(){
   setP(loader());
 
   const [{data:mensajeros},{data:prestamos}]=await Promise.all([
-    sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,created_at').order('nombre_completo'),
+    sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,fecha_retiro,created_at').order('activo',{ascending:false}).order('nombre_completo'),
     sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo').order('nombre'),
   ]);
 
@@ -2665,7 +2665,7 @@ async function pgUsuarios(){
             ${m.usuario_xcargo?`<div style="font-size:var(--fss);color:var(--tx3);margin-top:1px">xcargo: ${esc(m.usuario_xcargo)}</div>`:''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-            <span class="b ${m.activo?'b-gr':'b-gy'}">${m.activo?'Activo':'Inactivo'}</span>
+            <span class="b ${m.activo?'b-gr':'b-gy'}">${m.activo?'Activo':'Retirado'}</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
           </div>
         </div>
@@ -2774,7 +2774,8 @@ async function pgUsuarioDetalle(){
           <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">
             ${m.num_documento?'CC '+esc(m.num_documento):'Sin documento'}
           </div>
-          <span class="b ${m.activo?'b-gr':'b-gy'}" style="margin-top:4px;display:inline-block">${m.activo?'Activo':'Inactivo'}</span>
+          <span class="b ${m.activo?'b-gr':'b-gy'}" style="margin-top:4px;display:inline-block">${m.activo?'Activo':'Retirado'}</span>
+          ${m.fecha_retiro?`<span style="font-size:var(--fss);color:var(--tx3);margin-left:6px">desde ${fmtDate(m.fecha_retiro)}</span>`:''}
         </div>
       </div>
 
@@ -2852,7 +2853,7 @@ async function pgUsuarioDetalle(){
   h+=`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
     <button class="btn btn-o btn-s" style="flex:1" onclick="editarUsuario('${userId}')">✏️ Editar datos</button>
     <button class="btn ${m.activo?'btn-d':'btn-g'} btn-s" style="flex:1" onclick="toggleUsuarioActivo('${userId}','${esc(m.nombre_completo)}',${m.activo})">
-      ${m.activo?'Desactivar':'Activar'}
+      ${m.activo?'Registrar retiro':'Reactivar'}
     </button>
   </div>`;
 
@@ -3001,20 +3002,98 @@ async function guardarUsuario(){
 }
 
 async function toggleUsuarioActivo(id, nombre, activo){
-  const nuevo=!activo;
-  dialog(
-    nuevo?'Activar usuario':'Desactivar usuario',
-    `¿${nuevo?'Activar':'Desactivar'} a ${nombre}?`,'',
-    [
-      {l:'Cancelar',fn:closeDlg},
-      {l:nuevo?'Activar':'Desactivar',c:nuevo?'btn-g':'btn-d',fn:async()=>{
+  if(activo){
+    // ── FLUJO DE RETIRO ──
+    // Obtener datos completos del mensajero
+    const{data:m}=await sb.from('mensajeros')
+      .select('usuario_propio,usuario_xcargo,usuario_xcargo_prestado')
+      .eq('id',id).single();
+
+    const tienePropio = m?.usuario_propio && m?.usuario_xcargo;
+    const tienePrestado = m?.usuario_xcargo_prestado;
+
+    // Construir botones según el caso
+    const botonesRetiro=[
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Registrar retiro', c:'btn-d', fn:async()=>{
         closeDlg();
-        await sb.from('mensajeros').update({activo:nuevo}).eq('id',id);
-        toast(`${nombre} ${nuevo?'activado':'desactivado'}`,'ok');
-        go('usuarios');
+
+        if(tienePropio){
+          // Preguntar qué hacer con el usuario propio
+          dialog(
+            'Usuario xcargo propio',
+            `${nombre} tiene usuario xcargo propio (${m.usuario_xcargo}).\n¿Qué deseas hacer con él?`, '',
+            [
+              {l:'Cancelar', fn:closeDlg},
+              {l:'Guardar para usar después', c:'btn-o', fn:async()=>{
+                closeDlg();
+                // Mover a usuarios_prestamo como disponible
+                await sb.from('usuarios_prestamo').insert({
+                  nombre: `[Disponible] ${nombre}`,
+                  usuario_xcargo: m.usuario_xcargo,
+                  activo: true
+                });
+                await retirarMensajero(id, nombre, null);
+              }},
+              {l:'Inactivarlo', c:'btn-d', fn:async()=>{
+                closeDlg();
+                await retirarMensajero(id, nombre, null);
+              }}
+            ]
+          );
+        } else {
+          // Sin usuario propio — solo retirar y liberar prestado
+          await retirarMensajero(id, nombre, tienePrestado ? m.usuario_xcargo_prestado : null);
+        }
       }}
-    ]
-  );
+    ];
+
+    dialog(
+      'Registrar retiro',
+      `¿Registrar el retiro de ${nombre}?\n\nSu historial de paquetes se conserva para liquidar al final de la quincena.`,
+      '',
+      botonesRetiro
+    );
+
+  } else {
+    // ── REACTIVAR ──
+    dialog(
+      'Reactivar mensajero',
+      `¿Reactivar a ${nombre}?`, '',
+      [
+        {l:'Cancelar', fn:closeDlg},
+        {l:'Reactivar', c:'btn-g', fn:async()=>{
+          closeDlg();
+          await sb.from('mensajeros').update({activo:true, fecha_retiro:null}).eq('id',id);
+          toast(`${nombre} reactivado ✓`,'ok');
+          S._userId=id; S._userNombre=nombre;
+          go('usuario-detalle');
+        }}
+      ]
+    );
+  }
+}
+
+async function retirarMensajero(id, nombre, correoPrestadoALiberar){
+  const hoy=new Date().toISOString().slice(0,10);
+
+  // 1. Marcar mensajero como inactivo y guardar fecha de retiro
+  await sb.from('mensajeros').update({
+    activo: false,
+    fecha_retiro: hoy,
+    usuario_xcargo_prestado: null,  // liberar usuario prestado
+  }).eq('id',id);
+
+  // 2. Si tenía usuario prestado → marcarlo como disponible en el pool
+  if(correoPrestadoALiberar){
+    await sb.from('usuarios_prestamo')
+      .update({activo:true})
+      .eq('usuario_xcargo', correoPrestadoALiberar);
+    toast(`Usuario prestado (${correoPrestadoALiberar}) liberado y disponible de nuevo`,'ok');
+  }
+
+  toast(`Retiro de ${nombre} registrado. Su historial queda para liquidación final ✓`,'ok');
+  go('usuarios');
 }
 
 // ── Carga masiva Excel de usuarios ──
