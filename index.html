@@ -1785,15 +1785,18 @@ async function liqHandleFile(file){
     const baseData=XLSX.utils.sheet_to_json(baseSheet);
     if(!baseData.length)throw new Error('El archivo está vacío');
 
-    // Cargar mensajeros de Supabase — mapear por correo propio, cédula, y correo xcargo prestado
-    const{data:mensDB}=await sb.from('mensajeros').select('id,nombre_completo,num_documento,correo,usuario_xcargo_prestado').eq('activo',true);
-    const mensMapCorreo={};       // correo propio → mensajero
-    const mensMapCedula={};       // num_documento → mensajero
-    const mensMapPrestado={};     // usuario_xcargo_prestado → mensajero
+    // Cargar mensajeros — dos mapas: correo propio y correo xcargo prestado
+    const{data:mensDB}=await sb.from('mensajeros')
+      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio')
+      .eq('activo',true);
+
+    const mensMapCorreo={};    // correo propio → mensajero (usuario_propio=true)
+    const mensMapPrestado={};  // usuario_xcargo_prestado → mensajero (usuario_propio=false)
+    const mensMapCedula={};    // num_documento → mensajero (fallback)
     (mensDB||[]).forEach(m=>{
-      if(m.correo)mensMapCorreo[String(m.correo).trim().toLowerCase()]=m;
-      if(m.num_documento)mensMapCedula[String(m.num_documento).trim()]=m;
-      if(m.usuario_xcargo_prestado)mensMapPrestado[String(m.usuario_xcargo_prestado).trim().toLowerCase()]=m;
+      if(m.correo) mensMapCorreo[m.correo.trim().toLowerCase()]=m;
+      if(m.usuario_xcargo_prestado) mensMapPrestado[m.usuario_xcargo_prestado.trim().toLowerCase()]=m;
+      if(m.num_documento) mensMapCedula[String(m.num_documento).trim()]=m;
     });
 
     // Procesar filas — solo Entregado
@@ -3064,8 +3067,12 @@ async function usuDoImport(){
     const dir=String(r['DIRECCION']||'').trim()||null;
     const correo=String(r['Correo']||'').trim().toLowerCase()||null;
     const placa=String(r['PLACA']||'').trim().toUpperCase()||null;
-    const usuarioXcargo=String(r['USUARIO ACTUAL']||r['Correo']||'').trim().toLowerCase()||null;
     const usuarioPropio=String(r['USUARIO PROPIO']||'').trim().toUpperCase()==='SI';
+    // Si tiene usuario propio → USUARIO ACTUAL es su correo propio (mismo que Correo)
+    // Si NO tiene usuario propio → USUARIO ACTUAL es el correo prestado del pool
+    const usuarioActual=String(r['USUARIO ACTUAL']||'').trim().toLowerCase()||null;
+    const usuarioXcargo      = usuarioPropio ? (usuarioActual||correo) : null;
+    const usuarioXcargoPrest = usuarioPropio ? null : usuarioActual;
 
     // Fecha de ingreso — puede ser número serial Excel o texto
     let fechaIngreso=null;
@@ -3089,19 +3096,22 @@ async function usuDoImport(){
         if(existe){
           ({error}=await sb.from('mensajeros').update({
             nombre_completo:nombre,telefono:tel,direccion:dir,correo,placa,
-            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
           }).eq('id',existe.id));
         } else {
           ({error}=await sb.from('mensajeros').insert({
             nombre_completo:nombre,num_documento:doc,telefono:tel,direccion:dir,correo,placa,
-            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+            fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
           }));
         }
       } else {
         // Sin documento: insert directo
         ({error}=await sb.from('mensajeros').insert({
           nombre_completo:nombre,num_documento:null,telefono:tel,direccion:dir,correo,placa,
-          fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,usuario_propio:usuarioPropio,activo:true
+          fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
+          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,activo:true
         }));
       }
       if(error)throw error;
