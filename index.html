@@ -3075,7 +3075,7 @@ async function guardarUsuario(){
       S._userEditId=null;
       go('usuario-detalle');
     } else {
-      const{error}=await sb.from('mensajeros').insert({...payload,activo:true,created_by:S.user.id});
+      const{error}=await sb.from('mensajeros').insert({...payload,activo:true});
       if(error)throw error;
       toast('Usuario creado ✓','ok');
       go('usuarios');
