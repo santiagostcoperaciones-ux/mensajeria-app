@@ -775,35 +775,48 @@ async function pgContDetalle(){
   document.getElementById('barRight').innerHTML=`<button class="btn btn-o btn-s" onclick="go('asignar')">Asignar</button>`;
   setP(loader());
 
-  const{data:paq}=await sb.from('paquetes')
-    .select('id,num_guia,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
-    .eq('contenedor_id',contId);
+  // Conteos exactos con head:true (sin límite de 1000)
+  const[
+    {count:total},
+    {count:cPend},
+    {count:cAsig},
+    {count:cEntr},
+    {count:cDev},
+    {data:paq},
+  ]=await Promise.all([
+    sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId),
+    sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).in('estado',['pendiente','verificado']).is('mensajero_id',null).is('mensajero_simple_id',null),
+    sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).in('estado',['asignado','en_ruta']),
+    sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).eq('estado','entregado'),
+    sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).eq('estado','devuelto'),
+    // Datos completos para las tablas de zona/mensajero — con límite alto
+    sb.from('paquetes')
+      .select('id,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
+      .eq('contenedor_id',contId)
+      .limit(5000),
+  ]);
 
-  if(!paq?.length){setP('<p class="empty">Sin paquetes</p>');return;}
+  if(!total){setP('<p class="empty">Sin paquetes</p>');return;}
 
-  const total=paq.length;
-  const cntr={};paq.forEach(p=>{cntr[p.estado]=(cntr[p.estado]||0)+1;});
-  const pendCont=paq.filter(p=>['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id).length;
-  const pct=Math.round(100*(cntr.entregado||0)/total);
+  const pct=Math.round(100*(cEntr||0)/(total||1));
 
-  // Por zona
+  // Agrupación por zona
   const byZona={};
-  paq.forEach(p=>{
+  (paq||[]).forEach(p=>{
     const z=p.zonas?.nombre||'Sin zona';
     if(!byZona[z])byZona[z]={total:0,pend:0,asig:0,entr:0,dev:0};
     byZona[z].total++;
-    if(['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id)byZona[z].pend++;
+    if(['pendiente','verificado'].includes(p.estado)&&!p.mensajero_id&&!p.mensajero_simple_id)byZona[z].pend++;
     else if(['asignado','en_ruta'].includes(p.estado))byZona[z].asig++;
     else if(p.estado==='entregado')byZona[z].entr++;
     else if(p.estado==='devuelto')byZona[z].dev++;
   });
 
-  // Por mensajero
+  // Agrupación por mensajero
   const byMens={};
-  paq.forEach(p=>{
+  (paq||[]).forEach(p=>{
     const mId=p.mensajero_simple_id||p.mensajero_id;
     if(!mId)return;
-    if(!['asignado','en_ruta','verificado','entregado','devuelto'].includes(p.estado))return;
     const mNombre=p.mensajeros_data?.nombre_completo||p.profiles?.nombre_completo||'Sin nombre';
     if(!byMens[mId])byMens[mId]={id:mId,nombre:mNombre,tipo:p.mensajero_simple_id?'mensajero':'profile',total:0,entr:0,dev:0,pend:0};
     byMens[mId].total++;
@@ -815,9 +828,9 @@ async function pgContDetalle(){
   const statsHTML=`
     <div class="stat-row">
       <div class="stat"><div class="stat-n">${total}</div><div class="stat-l">Total</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--red)">${pendCont}</div><div class="stat-l">Pendientes</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--acc)">${(cntr.asignado||0)+(cntr.verificado||0)}</div><div class="stat-l">Asignados</div></div>
-      <div class="stat"><div class="stat-n" style="color:var(--grn)">${cntr.entregado||0}</div><div class="stat-l">Entregados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--red)">${cPend}</div><div class="stat-l">Pendientes</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--acc)">${cAsig}</div><div class="stat-l">Asignados</div></div>
+      <div class="stat"><div class="stat-n" style="color:var(--grn)">${cEntr}</div><div class="stat-l">Entregados</div></div>
     </div>
     <div class="progress" style="margin-bottom:4px"><div class="progress-bar" style="width:${pct}%;background:var(--grn)"></div></div>
     <div style="text-align:right;font-size:var(--fss);color:var(--tx2);margin-bottom:14px">${pct}% entregado</div>
