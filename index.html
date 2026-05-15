@@ -447,47 +447,58 @@ async function pgHome(){
 
   // Pendientes del DÍA seleccionado: paquetes importados ese día sin mensajero
   // Rezagados: paquetes de días ANTERIORES sin mensajero (importados antes del día seleccionado)
-  const[{data:asignadosHoy},{data:entregadosHoy},{data:devueltosHoy},{data:pendDia},{data:pendRezagados}]=await Promise.all([
-    // Asignados en el día seleccionado
+  const[
+    {data:asignadosHoy},
+    {count:totalEntr},
+    {count:totalDev},
+    {count:totalPendDia},
+    {count:totalRezagados},
+    {count:totalAsigCount},
+  ]=await Promise.all([
+    // Asignados hoy — datos completos para listar por mensajero (sin head:true)
     sb.from('historial_paquetes')
       .select('paquete_id,mensajero_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo)')
       .eq('accion','asignado')
-      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
-    // Entregados en el día seleccionado
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
+      .limit(2000),
+    // Entregados — solo conteo
     sb.from('historial_paquetes')
       .select('paquete_id',{count:'exact',head:true})
       .eq('accion','entregado')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
-    // Devueltos en el día seleccionado
+    // Devueltos — solo conteo
     sb.from('historial_paquetes')
       .select('paquete_id',{count:'exact',head:true})
       .eq('accion','devuelto_bodega')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
-    // Pendientes del DÍA: importados ese día, sin mensajero
+    // Pendientes del día — solo conteo
     sb.from('paquetes')
       .select('id',{count:'exact',head:true})
       .in('estado',['pendiente','verificado'])
       .is('mensajero_id',null)
       .gte('created_at',diaStart).lte('created_at',diaEnd),
-    // Rezagados: importados ANTES del día seleccionado, sin mensajero
+    // Rezagados — solo conteo
     sb.from('paquetes')
       .select('id',{count:'exact',head:true})
       .in('estado',['pendiente','verificado'])
       .is('mensajero_id',null)
       .lt('created_at',diaStart),
+    // Total asignados — conteo exacto separado
+    sb.from('historial_paquetes')
+      .select('paquete_id',{count:'exact',head:true})
+      .eq('accion','asignado')
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
   ]);
 
-  const totalPendDia=pendDia?.length??0;
-  const totalRezagados=pendRezagados?.length??0;
-  const totalAsig=asignadosHoy?.length??0;
-  const totalEntr=entregadosHoy?.length??0;
-  const totalDev=devueltosHoy?.length??0;
+  const totalAsig=totalAsigCount??0;
 
   // Agrupar asignados por mensajero
   const porMens={};
   (asignadosHoy||[]).forEach(h=>{
     const mId=h.mensajero_nuevo||'sin';
-    const mNombre=h.profiles?.nombre_completo||'Sin asignar';
+    // El join puede venir como array o objeto según Supabase
+    const perfil=Array.isArray(h.profiles)?h.profiles[0]:h.profiles;
+    const mNombre=perfil?.nombre_completo||(mId==='sin'?'Sin asignar':'Mensajero '+mId.slice(0,6));
     if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0};}
     porMens[mId].count++;
   });
