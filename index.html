@@ -454,51 +454,79 @@ async function pgHome(){
     {count:totalPendDia},
     {count:totalRezagados},
     {count:totalAsigCount},
+    {data:actividadMens},
   ]=await Promise.all([
-    // Asignados hoy — datos completos para listar por mensajero (sin head:true)
+    // Asignados hoy — datos para listar por mensajero
     sb.from('historial_paquetes')
       .select('paquete_id,mensajero_nuevo,mensajero_simple_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo),mensajeros!mensajero_simple_nuevo(nombre_completo)')
       .in('accion',['asignado','reasignado'])
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
       .limit(2000),
-    // Entregados — solo conteo
-    sb.from('historial_paquetes')
-      .select('paquete_id',{count:'exact',head:true})
-      .eq('accion','entregado')
-      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
-    // Devueltos — solo conteo
-    sb.from('historial_paquetes')
-      .select('paquete_id',{count:'exact',head:true})
-      .eq('accion','devuelto_bodega')
-      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
-    // Pendientes del día — solo conteo
+    // Entregados hoy — estado real en paquetes
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .eq('estado','entregado')
+      .gte('updated_at',diaStart).lte('updated_at',diaEnd),
+    // Devueltos hoy — estado real en paquetes
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .eq('estado','devuelto')
+      .gte('updated_at',diaStart).lte('updated_at',diaEnd),
+    // Pendientes del día sin asignar
     sb.from('paquetes')
       .select('id',{count:'exact',head:true})
       .in('estado',['pendiente','verificado'])
-      .is('mensajero_id',null)
+      .is('mensajero_id',null).is('mensajero_simple_id',null)
       .gte('created_at',diaStart).lte('created_at',diaEnd),
-    // Rezagados — solo conteo
+    // Rezagados de días anteriores sin asignar
     sb.from('paquetes')
       .select('id',{count:'exact',head:true})
       .in('estado',['pendiente','verificado'])
-      .is('mensajero_id',null)
+      .is('mensajero_id',null).is('mensajero_simple_id',null)
       .lt('created_at',diaStart),
-    // Total asignados — conteo exacto separado
+    // Paquetes con mensajero asignado hoy (estado actual = asignado/en_ruta)
+    sb.from('paquetes')
+      .select('id',{count:'exact',head:true})
+      .in('estado',['asignado','en_ruta'])
+      .gte('updated_at',diaStart).lte('updated_at',diaEnd),
+    // Actividad completa por mensajero hoy (todas las acciones)
     sb.from('historial_paquetes')
-      .select('paquete_id',{count:'exact',head:true})
-      .in('accion',['asignado','reasignado'])
-      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
+      .select('paquete_id,accion,mensajero_nuevo,mensajero_simple_nuevo,realizado_en,profiles!mensajero_nuevo(nombre_completo),mensajeros!mensajero_simple_nuevo(nombre_completo)')
+      .in('accion',['asignado','reasignado','entregado','devuelto_bodega','desasignado'])
+      .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
+      .limit(3000),
   ]);
 
   const totalAsig=totalAsigCount??0;
 
-  // Deduplicar: si un paquete fue reasignado, quedarse solo con la entrada más reciente
+  // ── Actividad completa por mensajero ──
+  // Para cada mensajero: cuántos asignó, entregó, devolvió, intercambió
+  const actMens={};
+  const addAct=(mId,mNombre,campo)=>{
+    if(!mId||mId==='sin')return;
+    if(!actMens[mId])actMens[mId]={nombre:mNombre,asignados:0,entregados:0,devueltos:0,intercambiados:0};
+    actMens[mId][campo]++;
+  };
+  (actividadMens||[]).forEach(r=>{
+    const mId=r.mensajero_simple_nuevo||r.mensajero_nuevo;
+    if(!mId)return;
+    const perfilProf=Array.isArray(r.profiles)?r.profiles[0]:r.profiles;
+    const perfilMens=Array.isArray(r.mensajeros)?r.mensajeros[0]:r.mensajeros;
+    const mNombre=perfilMens?.nombre_completo||perfilProf?.nombre_completo||'Mensajero';
+    if(r.accion==='asignado') addAct(mId,mNombre,'asignados');
+    else if(r.accion==='reasignado') addAct(mId,mNombre,'intercambiados');
+    else if(r.accion==='entregado') addAct(mId,mNombre,'entregados');
+    else if(r.accion==='devuelto_bodega') addAct(mId,mNombre,'devueltos');
+  });
+
+  // Deduplicar asignados: solo la entrada más reciente por paquete
   const paqUltimo={};
   (asignadosHoy||[]).forEach(r=>{
     const pid=r.paquete_id;
     if(!paqUltimo[pid]||r.realizado_en>paqUltimo[pid].realizado_en) paqUltimo[pid]=r;
   });
 
+  // Agrupar para tarjetas (paquetes actualmente asignados a cada mensajero hoy)
   const porMens={};
   Object.values(paqUltimo).forEach(r=>{
     const mId=r.mensajero_simple_nuevo||r.mensajero_nuevo||'sin';
@@ -508,10 +536,8 @@ async function pgHome(){
     if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0,paquetes:[]};}
     porMens[mId].count++;
     if(r.paquetes) porMens[mId].paquetes.push({
-      guia:r.paquetes.num_guia,
-      destinatario:r.paquetes.destinatario,
-      direccion:r.paquetes.direccion_original,
-      estado:r.paquetes.estado,
+      guia:r.paquetes.num_guia,destinatario:r.paquetes.destinatario,
+      direccion:r.paquetes.direccion_original,estado:r.paquetes.estado,
       zona:r.paquetes.zonas?.nombre||'—',
     });
   });
@@ -581,6 +607,12 @@ async function pgHome(){
     window._homeFechaLabel=fechaLabel;
     Object.entries(porMens).sort((a,b)=>b[1].count-a[1].count).forEach(([mId,m])=>{
       const essinasignar=mId==='sin';
+      const act=actMens[mId]||{};
+      const chips=[];
+      if(act.asignados) chips.push(`<span style="color:var(--acc)">${act.asignados} asig</span>`);
+      if(act.entregados) chips.push(`<span style="color:var(--grn)">${act.entregados} entr</span>`);
+      if(act.devueltos) chips.push(`<span style="color:var(--red)">${act.devueltos} dev</span>`);
+      if(act.intercambiados) chips.push(`<span style="color:var(--amb)">${act.intercambiados} intercamb</span>`);
       h+=`<div class="card" onclick="mostrarDetalleMensHome('${esc(mId)}')">
         <div class="card-row">
           <div class="ci" style="background:${essinasignar?'rgba(239,68,68,.12)':'rgba(139,92,246,.12)'};color:${essinasignar?'var(--red)':'var(--pur)'}">
@@ -588,7 +620,8 @@ async function pgHome(){
           </div>
           <div style="flex:1;min-width:0">
             <div class="ct" style="${essinasignar?'color:var(--red)':''}">${esc(m.nombre)}</div>
-            <div class="cs">${m.count} paquete${m.count!==1?'s':''} asignado${m.count!==1?'s':''} ${fechaLabel}</div>
+            <div class="cs">${m.count} paquete${m.count!==1?'s':''} en curso ${fechaLabel}</div>
+            ${chips.length?`<div style="font-size:var(--fss);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap">${chips.join('')}</div>`:''}
           </div>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
         </div>
