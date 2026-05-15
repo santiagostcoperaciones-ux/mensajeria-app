@@ -545,9 +545,11 @@ async function pgHome(){
     if(!paqUltimo[pid]||r.realizado_en>paqUltimo[pid].realizado_en) paqUltimo[pid]=r;
   });
 
-  // Agrupar para tarjetas (paquetes actualmente asignados a cada mensajero hoy)
+  // Agrupar para tarjetas — excluir paquetes devueltos o entregados
   const porMens={};
   Object.values(paqUltimo).forEach(r=>{
+    const estadoActual=r.paquetes?.estado;
+    if(['devuelto','entregado'].includes(estadoActual)) return;
     const mId=r.mensajero_simple_nuevo||r.mensajero_nuevo||'sin';
     const perfilProf=Array.isArray(r.profiles)?r.profiles[0]:r.profiles;
     const perfilMens=Array.isArray(r.mensajeros)?r.mensajeros[0]:r.mensajeros;
@@ -556,7 +558,7 @@ async function pgHome(){
     porMens[mId].count++;
     if(r.paquetes) porMens[mId].paquetes.push({
       guia:r.paquetes.num_guia,destinatario:r.paquetes.destinatario,
-      direccion:r.paquetes.direccion_original,estado:r.paquetes.estado,
+      direccion:r.paquetes.direccion_original,estado:estadoActual,
       zona:r.paquetes.zonas?.nombre||'—',
     });
   });
@@ -1385,12 +1387,25 @@ async function confirmarAsignacion(){
       if(s)s.textContent=`${i} de ${total}`;
       try{
         if(item.estado==='sobrante'){
-          const{data:np}=await sb.from('paquetes').insert({
+          const paqData={
             num_guia:item.guia,contenedor_id:null,destinatario:'SOBRANTE',
             direccion_original:'Sobrante escaneado',estado:nuevoEstado,
-            mensajero_id:esSinAsignar?null:S.asigMensId,created_by:S.user.id
-          }).select().single();
-          if(np)await sb.from('historial_paquetes').insert({paquete_id:np.id,accion:'marcado_sobrante',estado_nuevo:nuevoEstado,mensajero_nuevo:esSinAsignar?null:S.asigMensId,realizado_por:S.user.id});
+          };
+          if(!esSinAsignar){
+            if(S.asigMensTipo==='mensajero') paqData.mensajero_simple_id=S.asigMensId;
+            else paqData.mensajero_id=S.asigMensId;
+          }
+          if(esSinAsignar) paqData.bolsa_nombre=S.asigMensNombre||'Bolsa';
+          const{data:np}=await sb.from('paquetes').insert(paqData).select().single();
+          if(np) await sb.from('historial_paquetes').insert({
+            paquete_id:np.id,
+            accion:esSinAsignar?'asignado':'asignado',
+            estado_nuevo:nuevoEstado,
+            mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
+            mensajero_simple_nuevo:(!esSinAsignar&&S.asigMensTipo==='mensajero')?S.asigMensId:null,
+            nota:'Sobrante escaneado',
+            realizado_por:S.user.id
+          });
         }else{
           const upd={estado:nuevoEstado,updated_by:S.user.id};
           if(esSinAsignar){
@@ -1798,7 +1813,9 @@ async function doSearch(){
       const{data:prof}=await sb.from('profiles').select('nombre_completo').eq('id',paq.mensajero_id).single();
       mensName=prof?.nombre_completo||'—';
     }
-    const{data:hist}=await sb.from('historial_paquetes').select('accion,estado_nuevo,realizado_en,nota,profiles!realizado_por(nombre_completo)').eq('paquete_id',paq.id).order('realizado_en',{ascending:false}).limit(8);
+    const{data:hist}=await sb.from('historial_paquetes')
+      .select('accion,estado_nuevo,realizado_en,nota,mensajero_nuevo,mensajero_simple_nuevo,profiles!realizado_por(nombre_completo),mens_asig:profiles!mensajero_nuevo(nombre_completo),mens_simple:mensajeros!mensajero_simple_nuevo(nombre_completo)')
+      .eq('paquete_id',paq.id).order('realizado_en',{ascending:false}).limit(10);
     let h=`<div class="card" style="cursor:default">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
         <span style="font-family:var(--mo);font-weight:600;color:var(--acc)">${esc(guia)}</span>
@@ -1823,10 +1840,15 @@ async function doSearch(){
       h+='<div style="font-size:var(--fss);font-weight:600;color:var(--tx2);margin-bottom:6px">Historial</div>';
       hist.forEach(ev=>{
         const who=ev.profiles?.nombre_completo||'—';
-        h+=`<div style="font-size:var(--fss);color:var(--tx3);padding:5px 0;border-bottom:1px solid var(--brd)">
-          <span style="color:var(--tx2);font-weight:500">${esc(ev.accion)}</span>${ev.estado_nuevo?` → ${esc(ev.estado_nuevo)}`:''}
-          <span style="float:right">${fmtTime(ev.realizado_en)}</span><br>
-          <span>${who}</span>${ev.nota?` · <span style="color:var(--tx3)">${esc(ev.nota)}</span>`:''}
+        const mensAsig=ev.mens_simple?.nombre_completo||ev.mens_asig?.nombre_completo||null;
+        const accionColor={'asignado':'var(--acc)','reasignado':'var(--amb)','entregado':'var(--grn)','devuelto_bodega':'var(--red)','desasignado':'var(--tx3)'}[ev.accion]||'var(--tx2)';
+        h+=`<div style="font-size:var(--fss);color:var(--tx3);padding:6px 0;border-bottom:1px solid var(--brd)">
+          <div style="display:flex;justify-content:space-between;align-items:baseline">
+            <span style="color:${accionColor};font-weight:600">${esc(ev.accion)}</span>
+            <span style="color:var(--tx3)">${fmtTime(ev.realizado_en)}</span>
+          </div>
+          ${mensAsig?`<div style="color:var(--tx2);margin-top:1px">→ ${esc(mensAsig)}</div>`:''}
+          <div style="color:var(--tx3);margin-top:1px">por ${esc(who)}${ev.nota?' · '+esc(ev.nota):''}</div>
         </div>`;
       });
     }
