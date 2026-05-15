@@ -457,7 +457,7 @@ async function pgHome(){
   ]=await Promise.all([
     // Asignados hoy — datos completos para listar por mensajero (sin head:true)
     sb.from('historial_paquetes')
-      .select('paquete_id,mensajero_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo)')
+      .select('paquete_id,mensajero_nuevo,mensajero_simple_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo),mensajeros!mensajero_simple_nuevo(nombre_completo)')
       .eq('accion','asignado')
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
       .limit(2000),
@@ -492,15 +492,24 @@ async function pgHome(){
 
   const totalAsig=totalAsigCount??0;
 
-  // Agrupar asignados por mensajero
   const porMens={};
-  (asignadosHoy||[]).forEach(h=>{
-    const mId=h.mensajero_nuevo||'sin';
-    // El join puede venir como array o objeto según Supabase
-    const perfil=Array.isArray(h.profiles)?h.profiles[0]:h.profiles;
-    const mNombre=perfil?.nombre_completo||(mId==='sin'?'Sin asignar':'Mensajero '+mId.slice(0,6));
-    if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0};}
+  (asignadosHoy||[]).forEach(r=>{
+    // mensajero_nuevo = UUID de profiles (admin/operador)
+    // mensajero_simple_nuevo = UUID de mensajeros (mensajero de campo)
+    const mId=r.mensajero_simple_nuevo||r.mensajero_nuevo||'sin';
+    const perfilProf=Array.isArray(r.profiles)?r.profiles[0]:r.profiles;
+    const perfilMens=Array.isArray(r.mensajeros)?r.mensajeros[0]:r.mensajeros;
+    const mNombre=perfilMens?.nombre_completo||perfilProf?.nombre_completo||(mId==='sin'?'Sin asignar':null)||'Mensajero '+mId.slice(0,6);
+    if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0,paquetes:[]};}
     porMens[mId].count++;
+    // Guardar datos del paquete para el detalle
+    if(r.paquetes) porMens[mId].paquetes.push({
+      guia:r.paquetes.num_guia,
+      destinatario:r.paquetes.destinatario,
+      direccion:r.paquetes.direccion_original,
+      estado:r.paquetes.estado,
+      zona:r.paquetes.zonas?.nombre||'—',
+    });
   });
 
   let h=`
@@ -563,19 +572,54 @@ async function pgHome(){
     h+=`<p class="empty">Sin asignaciones ${fechaLabel}</p>`;
   } else {
     h+=`<div class="sec-title">Mensajeros · ${fechaLabel}</div>`;
+    // Guardar datos en window para acceso desde el detalle
+    window._homePorMens=porMens;
+    window._homeFechaLabel=fechaLabel;
     Object.entries(porMens).sort((a,b)=>b[1].count-a[1].count).forEach(([mId,m])=>{
-      h+=`<div class="card" onclick="S._auditMensId='${esc(mId)}';S._auditMensNombre='${esc(m.nombre)}';S._auditFecha='${S.homeFecha}';go('mens-historial')">
+      const essinasignar=mId==='sin';
+      h+=`<div class="card" onclick="mostrarDetalleMensHome('${esc(mId)}')">
         <div class="card-row">
-          <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur)">👤</div>
+          <div class="ci" style="background:${essinasignar?'rgba(239,68,68,.12)':'rgba(139,92,246,.12)'};color:${essinasignar?'var(--red)':'var(--pur)'}">
+            ${essinasignar?'⚠':'👤'}
+          </div>
           <div style="flex:1;min-width:0">
-            <div class="ct">${esc(m.nombre)}</div>
-            <div class="cs">${m.count} paquetes asignados ${fechaLabel}</div>
+            <div class="ct" style="${essinasignar?'color:var(--red)':''}">${esc(m.nombre)}</div>
+            <div class="cs">${m.count} paquete${m.count!==1?'s':''} asignado${m.count!==1?'s':''} ${fechaLabel}</div>
           </div>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
         </div>
       </div>`;
     });
   }
+  setP(h);
+}
+
+function mostrarDetalleMensHome(mId){
+  const m=window._homePorMens?.[mId];
+  if(!m)return;
+  const paquetes=m.paquetes||[];
+  let h=`<div class="sec-title" style="margin-bottom:8px">${esc(m.nombre)} · ${m.count} paquete${m.count!==1?'s':''}</div>`;
+  if(!paquetes.length){
+    h+=`<p class="empty">Sin detalle de paquetes</p>`;
+  } else {
+    paquetes.forEach(p=>{
+      const estadoColor={asignado:'var(--acc)',en_ruta:'var(--amb)',entregado:'var(--grn)',devuelto:'var(--red)'}[p.estado]||'var(--tx3)';
+      h+=`<div class="card" style="cursor:default">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="min-width:0">
+            <div style="font-family:var(--mo);font-size:var(--fsm);color:var(--acc)">${esc(p.guia||'—')}</div>
+            <div style="font-weight:500;margin-top:2px">${esc(p.destinatario||'—')}</div>
+            <div style="font-size:var(--fss);color:var(--tx3);margin-top:1px">${esc(p.direccion||'—')}</div>
+          </div>
+          <div style="flex-shrink:0;text-align:right">
+            <span class="chip">${esc(p.zona)}</span>
+            <div style="font-size:var(--fss);color:${estadoColor};margin-top:4px;text-transform:capitalize">${esc(p.estado)}</div>
+          </div>
+        </div>
+      </div>`;
+    });
+  }
+  h+=`<button class="btn btn-o btn-w btn-s" style="margin-top:8px" onclick="pgHome()">← Volver</button>`;
   setP(h);
 }
 
@@ -1142,6 +1186,7 @@ async function confirmarAsignacion(){
             accion:item.estado==='reasignar'?'reasignado':'asignado',
             estado_nuevo:nuevoEstado,
             mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
+            mensajero_simple_nuevo:(!esSinAsignar&&S.asigMensTipo==='mensajero')?S.asigMensId:null,
             realizado_por:S.user.id
           });
         }
