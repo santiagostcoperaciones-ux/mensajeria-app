@@ -1144,7 +1144,7 @@ function pgAsignarScan(){
 async function onAsigCode(guia){
   if(S.asigLista.find(i=>i.guia===guia)){toast('Ya escaneado','wa');return;}
   const{data:paq}=await sb.from('paquetes')
-    .select('id,estado,mensajero_id,zona_id,zonas(nombre),profiles!mensajero_id(nombre_completo),contenedores(codigo)')
+    .select('id,estado,mensajero_id,mensajero_simple_id,zona_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo),contenedores(codigo)')
     .eq('num_guia',guia).maybeSingle();
   const el=document.getElementById('scanResults');
   const updCount=()=>{const b=document.getElementById('btnVerLista');if(b)b.textContent=`Ver lista (${S.asigLista.length})`;};
