@@ -789,11 +789,21 @@ async function pgContDetalle(){
     sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).in('estado',['asignado','en_ruta']),
     sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).eq('estado','entregado'),
     sb.from('paquetes').select('id',{count:'exact',head:true}).eq('contenedor_id',contId).eq('estado','devuelto'),
-    // Datos completos para las tablas de zona/mensajero — con límite alto
-    sb.from('paquetes')
-      .select('id,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
-      .eq('contenedor_id',contId)
-      .limit(5000),
+    // Datos para tablas zona/mensajero — traer todos con paginación
+    (async()=>{
+      let all=[], from=0, batch=1000;
+      while(true){
+        const{data:chunk}=await sb.from('paquetes')
+          .select('id,estado,zona_id,mensajero_id,mensajero_simple_id,zonas(nombre),profiles!mensajero_id(nombre_completo),mensajeros_data:mensajeros!mensajero_simple_id(nombre_completo)')
+          .eq('contenedor_id',contId)
+          .range(from,from+batch-1);
+        if(!chunk?.length)break;
+        all=[...all,...chunk];
+        if(chunk.length<batch)break;
+        from+=batch;
+      }
+      return{data:all};
+    })(),
   ]);
 
   if(!total){setP('<p class="empty">Sin paquetes</p>');return;}
