@@ -458,7 +458,7 @@ async function pgHome(){
     // Asignados hoy — datos completos para listar por mensajero (sin head:true)
     sb.from('historial_paquetes')
       .select('paquete_id,mensajero_nuevo,mensajero_simple_nuevo,realizado_en,paquetes(num_guia,destinatario,direccion_original,estado,zonas(nombre)),profiles!mensajero_nuevo(nombre_completo),mensajeros!mensajero_simple_nuevo(nombre_completo)')
-      .eq('accion','asignado')
+      .in('accion',['asignado','reasignado'])
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd)
       .limit(2000),
     // Entregados — solo conteo
@@ -486,23 +486,27 @@ async function pgHome(){
     // Total asignados — conteo exacto separado
     sb.from('historial_paquetes')
       .select('paquete_id',{count:'exact',head:true})
-      .eq('accion','asignado')
+      .in('accion',['asignado','reasignado'])
       .gte('realizado_en',diaStart).lte('realizado_en',diaEnd),
   ]);
 
   const totalAsig=totalAsigCount??0;
 
-  const porMens={};
+  // Deduplicar: si un paquete fue reasignado, quedarse solo con la entrada más reciente
+  const paqUltimo={};
   (asignadosHoy||[]).forEach(r=>{
-    // mensajero_nuevo = UUID de profiles (admin/operador)
-    // mensajero_simple_nuevo = UUID de mensajeros (mensajero de campo)
+    const pid=r.paquete_id;
+    if(!paqUltimo[pid]||r.realizado_en>paqUltimo[pid].realizado_en) paqUltimo[pid]=r;
+  });
+
+  const porMens={};
+  Object.values(paqUltimo).forEach(r=>{
     const mId=r.mensajero_simple_nuevo||r.mensajero_nuevo||'sin';
     const perfilProf=Array.isArray(r.profiles)?r.profiles[0]:r.profiles;
     const perfilMens=Array.isArray(r.mensajeros)?r.mensajeros[0]:r.mensajeros;
     const mNombre=perfilMens?.nombre_completo||perfilProf?.nombre_completo||(mId==='sin'?'Sin asignar':null)||'Mensajero '+mId.slice(0,6);
     if(!porMens[mId]){porMens[mId]={nombre:mNombre,count:0,paquetes:[]};}
     porMens[mId].count++;
-    // Guardar datos del paquete para el detalle
     if(r.paquetes) porMens[mId].paquetes.push({
       guia:r.paquetes.num_guia,
       destinatario:r.paquetes.destinatario,
