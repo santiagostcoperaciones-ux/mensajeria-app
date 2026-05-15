@@ -1109,24 +1109,40 @@ async function doImport(){
 async function pgAsignar(){
   setBar('Asignar paquetes','');
   setP(loader());
-  // Cargar mensajeros (tabla mensajeros) + admins/operadores (profiles)
-  const [{data:mensList},{data:adminList}] = await Promise.all([
+  const [{data:mensList},{data:adminList},{data:bolsasRaw}] = await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,zona_principal').eq('activo',true).order('nombre_completo'),
     sb.from('profiles').select('id,nombre_completo').eq('activo',true).in('rol',['admin','operador']).order('nombre_completo'),
+    // Bolsas pendientes: paquetes con bolsa_nombre, sin mensajero asignado
+    sb.from('paquetes').select('bolsa_nombre')
+      .not('bolsa_nombre','is',null)
+      .in('estado',['pendiente','verificado'])
+      .is('mensajero_id',null).is('mensajero_simple_id',null),
   ]);
-  // Unificar: mensajeros tienen prefijo 'm:' en el id para distinguirlos
+
+  // Agrupar bolsas por nombre con conteo
+  const bolsasMap={};
+  (bolsasRaw||[]).forEach(p=>{
+    const n=p.bolsa_nombre;
+    if(!bolsasMap[n])bolsasMap[n]=0;
+    bolsasMap[n]++;
+  });
+  const bolsas=Object.entries(bolsasMap).sort((a,b)=>a[0].localeCompare(b[0]));
+
   const todosLosAsignables = [
-    ...(mensList||[]).map(m=>({...m, tipo:'mensajero'})),
-    ...(adminList||[]).map(a=>({...a, tipo:'profile'})),
+    ...(mensList||[]).map(m=>({...m,tipo:'mensajero'})),
+    ...(adminList||[]).map(a=>({...a,tipo:'profile'})),
   ];
   S.mensajeros = todosLosAsignables;
-  setP(`
+
+  const selOpts=todosLosAsignables.map(m=>`<option value="${m.tipo}:${m.id}">${esc(m.nombre_completo)}${m.zona_principal?' ('+esc(m.zona_principal)+')':''}</option>`).join('');
+
+  let h=`
     <div style="margin-bottom:14px">
       <label>Mensajero</label>
       <select class="inp sel" id="selMens">
         <option value="">— Seleccionar —</option>
         <option value="SIN_ASIGNAR">Sin asignar (bolsa)</option>
-        ${(todosLosAsignables).map(m=>`<option value="${m.tipo}:${m.id}">${esc(m.nombre_completo)}${m.zona_principal?' ('+esc(m.zona_principal)+')':''}</option>`).join('')}
+        ${selOpts}
       </select>
     </div>
     <div id="bolsaWrap" style="display:none;margin-bottom:14px">
@@ -1136,13 +1152,93 @@ async function pgAsignar(){
     <button class="btn btn-p btn-w" onclick="iniciarAsignacion()">Iniciar escaneo →</button>
     <div style="margin-top:10px;padding:10px;background:var(--bg);border-radius:var(--r2);font-size:var(--fss);color:var(--tx3)">
       ℹ️ Se aceptan paquetes de cualquier contenedor activo
-    </div>
-  `);
+    </div>`;
+
+  // Bolsas pendientes
+  if(bolsas.length){
+    h+=`<div class="sec-title" style="margin-top:18px">Bolsas pendientes de asignar (${bolsas.length})</div>`;
+    bolsas.forEach(([nombre,count])=>{
+      h+=`<div class="card">
+        <div class="card-row">
+          <div class="ci" style="background:rgba(245,158,11,.12);color:var(--amb);font-size:20px">🛍</div>
+          <div style="flex:1;min-width:0">
+            <div class="ct">${esc(nombre)}</div>
+            <div class="cs">${count} paquete${count!==1?'s':''} sin asignar</div>
+          </div>
+        </div>
+        <div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--brd);display:flex;gap:8px;align-items:center">
+          <select class="inp sel" id="selBolsa_${esc(nombre)}" style="flex:1;font-size:12px">
+            <option value="">— Asignar a... —</option>
+            ${selOpts}
+          </select>
+          <button class="btn btn-g btn-s" onclick="asignarBolsa('${esc(nombre)}',${count})">Asignar</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  setP(h);
   const selEl=document.getElementById('selMens');
   if(selEl) selEl.onchange=function(){
     const bw=document.getElementById('bolsaWrap');
     if(bw)bw.style.display=this.value==='SIN_ASIGNAR'?'block':'none';
   };
+}
+
+async function asignarBolsa(nombreBolsa, count){
+  const selId=`selBolsa_${nombreBolsa}`;
+  const val=document.getElementById(selId)?.value;
+  if(!val){toast('Selecciona un mensajero','er');return;}
+  const[tipo,id]=val.split(':');
+  const mNombre=S.mensajeros.find(m=>m.id===id)?.nombre_completo||'Mensajero';
+
+  dialog(
+    'Asignar bolsa',
+    `¿Asignar "${nombreBolsa}" (${count} paquetes) a ${mNombre}?`,'',
+    [
+      {l:'Cancelar',fn:closeDlg},
+      {l:'Asignar',c:'btn-g',fn:async()=>{
+        closeDlg();
+        setP(`<div class="ld"><div class="sp"></div><p style="color:var(--tx2)">Asignando ${count} paquetes...</p></div>`);
+        try{
+          // Traer todos los paquetes de la bolsa
+          const{data:paqBolsa}=await sb.from('paquetes')
+            .select('id')
+            .eq('bolsa_nombre',nombreBolsa)
+            .in('estado',['pendiente','verificado'])
+            .is('mensajero_id',null).is('mensajero_simple_id',null);
+
+          if(!paqBolsa?.length){toast('No se encontraron paquetes en la bolsa','wa');pgAsignar();return;}
+
+          // Actualizar en lotes
+          const upd=tipo==='mensajero'
+            ?{estado:'asignado',mensajero_simple_id:id,mensajero_id:null,bolsa_nombre:null}
+            :{estado:'asignado',mensajero_id:id,mensajero_simple_id:null,bolsa_nombre:null};
+
+          // Batch update de 100 en 100
+          for(let i=0;i<paqBolsa.length;i+=100){
+            const lote=paqBolsa.slice(i,i+100).map(p=>p.id);
+            await sb.from('paquetes').update({...upd,updated_by:S.user.id}).in('id',lote);
+            // Historial
+            const hist=lote.map(pid=>({
+              paquete_id:pid,accion:'asignado',estado_nuevo:'asignado',
+              mensajero_nuevo:tipo==='profile'?id:null,
+              mensajero_simple_nuevo:tipo==='mensajero'?id:null,
+              realizado_por:S.user.id,
+              nota:`Asignado desde bolsa: ${nombreBolsa}`,
+            }));
+            await sb.from('historial_paquetes').insert(hist);
+          }
+
+          toast(`${paqBolsa.length} paquetes asignados a ${mNombre} ✓`,'ok');
+          pgAsignar();
+        }catch(e){
+          toast('Error: '+e.message,'er');
+          pgAsignar();
+        }
+      }}
+    ]
+  );
 }
 function iniciarAsignacion(){
   const val=document.getElementById('selMens').value;
@@ -1280,7 +1376,9 @@ async function confirmarAsignacion(){
         }else{
           const upd={estado:nuevoEstado,updated_by:S.user.id};
           if(esSinAsignar){
-            upd.mensajero_simple_id=null; upd.mensajero_id=null;
+            upd.mensajero_simple_id=null;
+            upd.mensajero_id=null;
+            upd.bolsa_nombre=S.asigMensNombre||'Bolsa';
           } else if(S.asigMensTipo==='mensajero'){
             upd.mensajero_simple_id=S.asigMensId; upd.mensajero_id=null;
           } else {
