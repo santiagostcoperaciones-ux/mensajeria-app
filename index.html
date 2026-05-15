@@ -702,12 +702,13 @@ async function pgContenedores(){
     return;
   }
 
+  const isAdmin=S.profile?.rol==='admin';
   const stConf={pendiente:{c:'b-am',icon:'⏳'},en_proceso:{c:'b-bl',icon:'🔄'},cerrado:{c:'b-gy',icon:'✓'}};
   let h='';
   conts.forEach(c=>{
     const st=stConf[c.estado]||stConf.pendiente;
-    h+=`<div class="card" onclick="S._contId='${c.id}';S._contCodigo='${esc(c.codigo)}';go('cont-detalle')">
-      <div class="card-row">
+    h+=`<div class="card">
+      <div class="card-row" onclick="S._contId='${c.id}';S._contCodigo='${esc(c.codigo)}';go('cont-detalle')" style="cursor:pointer;flex:1">
         <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">${st.icon}</div>
         <div style="flex:1;min-width:0">
           <div class="ct">${esc(c.codigo)}</div>
@@ -715,9 +716,54 @@ async function pgContenedores(){
         </div>
         <span class="b ${st.c}">${esc(c.estado)}</span>
       </div>
+      ${isAdmin?`<div style="display:flex;justify-content:flex-end;margin-top:8px;padding-top:8px;border-top:1px solid var(--brd)">
+        <button class="btn btn-d" style="font-size:11px;padding:4px 12px;height:auto" onclick="eliminarContenedor('${c.id}','${esc(c.codigo)}')">🗑 Eliminar</button>
+      </div>`:''}
     </div>`;
   });
   setP(h);
+}
+
+async function eliminarContenedor(contId, codigo){
+  // Verificar cuántos paquetes tiene
+  const{count:numPaq}=await sb.from('paquetes')
+    .select('id',{count:'exact',head:true})
+    .eq('contenedor_id',contId);
+
+  const msg=numPaq>0
+    ? `¿Eliminar el contenedor ${codigo} y sus ${numPaq} paquetes?\n\nEsto también eliminará el historial asociado.`
+    : `¿Eliminar el contenedor ${codigo}?\n\nNo tiene paquetes asociados.`;
+
+  dialog('Eliminar contenedor', msg,'',
+    [
+      {l:'Cancelar',fn:closeDlg},
+      {l:'Eliminar',c:'btn-d',fn:async()=>{
+        closeDlg();
+        setP(loader());
+        try{
+          // Eliminar historial de los paquetes del contenedor
+          if(numPaq>0){
+            const{data:paqIds}=await sb.from('paquetes').select('id').eq('contenedor_id',contId);
+            if(paqIds?.length){
+              await sb.from('historial_paquetes')
+                .delete()
+                .in('paquete_id',paqIds.map(p=>p.id));
+            }
+            // Eliminar paquetes
+            await sb.from('paquetes').delete().eq('contenedor_id',contId);
+          }
+          // Eliminar contenedor
+          const{error}=await sb.from('contenedores').delete().eq('id',contId);
+          if(error)throw error;
+          toast(`Contenedor ${codigo} eliminado ✓`,'ok');
+          pgContenedores();
+        }catch(e){
+          toast('Error: '+e.message,'er');
+          pgContenedores();
+        }
+      }}
+    ]
+  );
 }
 
 // ── Detalle contenedor con tabs Zonas / Mensajeros ──
