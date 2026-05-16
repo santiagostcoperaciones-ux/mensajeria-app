@@ -2324,15 +2324,15 @@ async function descargarReciboDesdequincena(qmId){
 // ── PDF Resumen de quincena para contabilidad ──
 async function descargarResumenQuincena(quinId, quinNombre){
   const{data:mensajeros}=await sb.from('quincena_mensajeros')
-    .select('nombre_display,total_entregas,total_bruto,en_bd')
+    .select('nombre_display,total_entregas,total_bruto,en_bd,mensajero_id,mensajeros(banco,num_cuenta,tipo_cuenta)')
     .eq('quincena_id',quinId)
     .order('total_bruto',{ascending:false});
   if(!mensajeros?.length){toast('Sin datos','wa');return;}
 
   const{jsPDF}=window.jspdf;
-  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  const PW=210,ML=14,MR=14,CW=PW-ML-MR;
-  let y=14;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const PW=297,ML=12,MR=12,CW=PW-ML-MR;
+  let y=12;
   const DARK=[15,23,42],GRAY=[100,116,139],LIGHT=[241,245,249],GREEN=[16,185,129],BLUE=[59,130,246],WHITE=[255,255,255];
   const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
@@ -2364,17 +2364,20 @@ async function descargarResumenQuincena(quinId, quinNombre){
   doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
   doc.text('#',ML+2,y+4.8);
   doc.text('Mensajero',ML+10,y+4.8);
-  doc.text('Entregas',ML+110,y+4.8,{align:'center'});
+  doc.text('Banco',ML+95,y+4.8);
+  doc.text('Cuenta',ML+145,y+4.8);
+  doc.text('Entregas',ML+205,y+4.8,{align:'center'});
   doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
   y+=7;
 
   mensajeros.forEach((m,i)=>{
-    if(y>275){
-      doc.addPage();y=14;
+    if(y>190){
+      doc.addPage();y=12;
       doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
       doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
       doc.text('#',ML+2,y+4.8);doc.text('Mensajero',ML+10,y+4.8);
-      doc.text('Entregas',ML+110,y+4.8,{align:'center'});
+      doc.text('Banco',ML+95,y+4.8);doc.text('Cuenta',ML+145,y+4.8);
+      doc.text('Entregas',ML+205,y+4.8,{align:'center'});
       doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
       y+=7;
     }
@@ -2384,10 +2387,18 @@ async function descargarResumenQuincena(quinId, quinNombre){
     doc.setFontSize(7);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
     doc.text(String(i+1),ML+2,y+4.8);
     doc.setTextColor(...DARK);
-    const nom=m.nombre_display.length>40?m.nombre_display.slice(0,39)+'…':m.nombre_display;
+    const nom=m.nombre_display.length>35?m.nombre_display.slice(0,34)+'…':m.nombre_display;
     doc.text(nom,ML+10,y+4.8);
+    // Banco y cuenta
+    const banco=m.mensajeros?.banco||'—';
+    const cuenta=m.mensajeros?.num_cuenta||'—';
+    const tipo=m.mensajeros?.tipo_cuenta?` (${m.mensajeros.tipo_cuenta})`:'';
+    doc.setTextColor(...GRAY);
+    doc.text((banco+tipo).slice(0,22),ML+95,y+4.8);
+    doc.setTextColor(...DARK);doc.setFont('helvetica','bold');
+    doc.text(cuenta.slice(0,20),ML+145,y+4.8);
     doc.setTextColor(...BLUE);doc.setFont('helvetica','bold');
-    doc.text(String(m.total_entregas||0),ML+110,y+4.8,{align:'center'});
+    doc.text(String(m.total_entregas||0),ML+205,y+4.8,{align:'center'});
     doc.setTextColor(...GREEN);
     doc.text(fmtCOP(m.total_bruto),PW-MR-2,y+4.8,{align:'right'});
     y+=7;
@@ -3139,13 +3150,30 @@ function generarReciboPDF(p, mens, liqId){
   // ══════════════════════════════════
   // TOTAL NETO (caja final destacada)
   // ══════════════════════════════════
-  if(y>PH-35){doc.addPage();y=MT;}
+  if(y>PH-45){doc.addPage();y=MT;}
   rect(ML,y,CW,18,GREEN,3);
   setFont(8,'normal',WHITE);
   doc.text('TOTAL A PAGAR',ML+CW/2,y+6,{align:'center'});
   setFont(16,'bold',WHITE);
   doc.text(fmtNum(p.totalNeto),ML+CW/2,y+14,{align:'center'});
-  y+=23;
+  y+=22;
+
+  // ── Datos bancarios ──
+  if(mens?.banco||mens?.num_cuenta){
+    if(y>PH-25){doc.addPage();y=MT;}
+    doc.setFillColor(248,255,250);
+    doc.roundedRect(ML,y,CW,15,2,2,'F');
+    doc.setDrawColor(16,185,129);doc.setLineWidth(0.4);
+    doc.roundedRect(ML,y,CW,15,2,2,'S');
+    setFont(7,'bold',DARK);
+    doc.text('📋 Datos para consignación',ML+3,y+5.5);
+    setFont(7,'normal',GRAY);
+    const tipoCta=mens.tipo_cuenta?` · Cta ${mens.tipo_cuenta}`:'';
+    doc.text(`${mens.banco||'—'}${tipoCta}`,ML+3,y+11);
+    setFont(8,'bold',[0,120,60]);
+    doc.text(mens.num_cuenta||'—',PW-MR-3,y+11,{align:'right'});
+    y+=19;
+  }
 
   // ══════════════════════════════════
   // PIE DE PÁGINA
@@ -3669,7 +3697,7 @@ async function pgUsuarioDetalle(){
   setP(loader());
 
   const{data:m}=await sb.from('mensajeros')
-    .select('*')
+    .select('*,banco,num_cuenta,tipo_cuenta')
     .eq('id',userId).single();
 
   if(!m){setP('<p class="empty">Usuario no encontrado</p>');return;}
@@ -3734,6 +3762,15 @@ async function pgUsuarioDetalle(){
       ${m.direccion?`<div style="margin-top:8px;background:var(--bg);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
         <div style="color:var(--tx3);margin-bottom:2px">Dirección</div>
         <div>${esc(m.direccion)}</div>
+      </div>`:''}
+
+      ${m.banco||m.num_cuenta?`<div style="margin-top:8px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
+        <div style="color:var(--tx3);margin-bottom:4px">Cuenta bancaria</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <div><div style="color:var(--tx3);font-size:10px">Banco</div><div style="font-weight:500">${esc(m.banco||'—')}</div></div>
+          <div><div style="color:var(--tx3);font-size:10px">Tipo</div><div style="font-weight:500;text-transform:capitalize">${esc(m.tipo_cuenta||'—')}</div></div>
+        </div>
+        <div style="margin-top:4px"><div style="color:var(--tx3);font-size:10px">Número</div><div style="font-family:var(--mo);font-weight:600;letter-spacing:1px">${esc(m.num_cuenta||'—')}</div></div>
       </div>`:''}
 
       ${m.usuario_xcargo?`<div style="margin-top:8px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
@@ -3867,7 +3904,29 @@ async function pgUsuarioNuevo(){
       <div><label>Fecha de ingreso</label>
         <input class="inp" type="date" id="unFechaIngreso" value="${datos.fecha_ingreso||''}"></div>
 
-      <div class="sec-title" style="margin-top:4px">Acceso xcargo</div>
+      <div class="sec-title" style="margin-top:4px">Cuenta bancaria</div>
+
+      <div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.15);border-radius:var(--r2);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
+        <div><label>Banco</label>
+          <select class="inp sel" id="unBanco">
+            <option value="">— Selecciona el banco —</option>
+            ${['Bancolombia','Banco de Bogotá','Banco Popular','Davivienda','BBVA','Banco Agrario','Banco Occidente','Banco Caja Social','Nequi','Daviplata','Banco W','Banco Falabella','Otro'].map(b=>`<option value="${b}" ${datos.banco===b?'selected':''}>${b}</option>`).join('')}
+          </select>
+        </div>
+        <div><label>Tipo de cuenta</label>
+          <select class="inp sel" id="unTipoCuenta">
+            <option value="">— Tipo —</option>
+            <option value="ahorros" ${datos.tipo_cuenta==='ahorros'?'selected':''}>Ahorros</option>
+            <option value="corriente" ${datos.tipo_cuenta==='corriente'?'selected':''}>Corriente</option>
+            <option value="nequi" ${datos.tipo_cuenta==='nequi'?'selected':''}>Nequi</option>
+            <option value="daviplata" ${datos.tipo_cuenta==='daviplata'?'selected':''}>Daviplata</option>
+            <option value="otro" ${datos.tipo_cuenta==='otro'?'selected':''}>Otro</option>
+          </select>
+        </div>
+        <div><label>Número de cuenta</label>
+          <input class="inp" id="unNumCuenta" placeholder="0000000000" type="text" inputmode="numeric" value="${esc(datos.num_cuenta||'')}">
+        </div>
+      </div>
 
       <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px 14px">
         <div style="margin-bottom:8px"><label>¿Tiene usuario xcargo propio?</label>
@@ -3922,6 +3981,9 @@ async function guardarUsuario(){
   const placa=document.getElementById('unPlaca')?.value?.trim().toUpperCase()||null;
   const zona=document.getElementById('unZona')?.value||null;
   const fechaIngreso=document.getElementById('unFechaIngreso')?.value||null;
+  const banco=document.getElementById('unBanco')?.value||null;
+  const tipoCuenta=document.getElementById('unTipoCuenta')?.value||null;
+  const numCuenta=document.getElementById('unNumCuenta')?.value?.trim()||null;
   const usuarioPropio=document.getElementById('unPropio')?.value==='true';
   // Si tiene usuario propio → guardar en usuario_xcargo y limpiar prestado
   // Si usa prestado → guardar en usuario_xcargo_prestado y limpiar propio
@@ -3942,6 +4004,9 @@ async function guardarUsuario(){
     usuario_xcargo:usuarioXcargo,
     usuario_xcargo_prestado:usuarioXcargoPrest,
     usuario_propio:usuarioPropio,
+    banco:banco,
+    num_cuenta:numCuenta,
+    tipo_cuenta:tipoCuenta||null,
   };
 
   try{
