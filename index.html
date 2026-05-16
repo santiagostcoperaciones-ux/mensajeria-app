@@ -3800,12 +3800,28 @@ async function pgUsuarioNuevo(){
     datos=m||{};
   }
 
-  // Cargar usuarios de préstamo disponibles para el selector
+  // Cargar usuarios de préstamo disponibles — excluir los ya asignados a mensajeros activos
   const{data:disponibles}=await sb.from('usuarios_prestamo')
     .select('id,nombre,usuario_xcargo,placa')
     .eq('activo',true)
     .order('nombre');
-  window._usuariosDisponibles=disponibles||[];
+
+  // Obtener correos ya asignados a mensajeros activos
+  const{data:enUso}=await sb.from('mensajeros')
+    .select('usuario_xcargo_prestado')
+    .eq('activo',true)
+    .not('usuario_xcargo_prestado','is',null);
+
+  const correosEnUso=new Set((enUso||[]).map(m=>m.usuario_xcargo_prestado?.toLowerCase()));
+
+  // Si estamos editando, excluir el usuario actual del mensajero (no contarlo como "en uso")
+  if(esEdicion&&datos.usuario_xcargo_prestado){
+    correosEnUso.delete(datos.usuario_xcargo_prestado.toLowerCase());
+  }
+
+  window._usuariosDisponibles=(disponibles||[]).filter(u=>
+    !correosEnUso.has(u.usuario_xcargo?.toLowerCase())
+  );
 
   setP(`
     <div style="display:flex;flex-direction:column;gap:10px">
