@@ -320,10 +320,11 @@ function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function toast(msg,type='ok'){beep(type);const e=document.getElementById('toast');e.textContent=msg;e.className=type+' show';clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2800);}
 function loader(){return '<div class="ld"><div class="sp"></div></div>';}
 function cleanGuia(raw){
-  // Extraer solo dígitos (las guías son numéricas)
-  const s = String(raw||'').trim().replace(/[^0-9]/g,'');
-  // Debe tener exactamente 16 dígitos y empezar con "26"
-  if(s.length === 16 && s.startsWith('26')) return s;
+  const s=String(raw||'').trim().replace(/[^0-9]/g,'');
+  // Formato estándar: 16 dígitos empezando con "26"
+  if(s.length===16&&s.startsWith('26')) return s;
+  // Sobrantes u otros formatos: aceptar cualquier número >= 8 dígitos
+  if(s.length>=8) return s;
   return null;
 }
 function todayISO(){return new Date().toISOString().slice(0,10);}
@@ -1419,9 +1420,16 @@ async function onAsigCode(guia){
   const el=document.getElementById('scanResults');
   const updCount=()=>{const b=document.getElementById('btnVerLista');if(b)b.textContent=`Ver lista (${S.asigLista.length})`;};
   if(!paq){
+    // No existe en BD → marcar como sobrante nuevo
     S.asigLista.push({guia,estado:'sobrante',zona:'SOBRANTE',contCodigo:'—'});
-    el.innerHTML=`<div class="scan-result" style="background:rgba(239,68,68,.1);color:var(--red)">📍 ${guia} — SOBRANTE</div>`+el.innerHTML;
+    el.innerHTML=`<div class="scan-result" style="background:rgba(239,68,68,.1);color:var(--red)">📍 ${guia} — SOBRANTE (nuevo)</div>`+el.innerHTML;
     beep('wa');updCount();return;
+  }
+  // Si existe pero es un sobrante previo sin asignar, tratarlo como disponible
+  if(paq.destinatario==='SOBRANTE'&&['pendiente','verificado'].includes(paq.estado)&&!paq.mensajero_id&&!paq.mensajero_simple_id){
+    S.asigLista.push({guia,estado:'disponible',zona:'SOBRANTE',paqId:paq.id,contCodigo:'—'});
+    el.innerHTML=`<div class="scan-result" style="background:rgba(245,158,11,.1);color:var(--amb)">📍 ${guia} — SOBRANTE existente (asignando)</div>`+el.innerHTML;
+    beep('ok');updCount();return;
   }
   const zona=paq.zonas?.nombre||'Sin zona';
   const cont=paq.contenedores?.codigo||'—';
@@ -1513,10 +1521,27 @@ async function confirmarAsignacion(){
             else paqData.mensajero_id=S.asigMensId;
           }
           if(esSinAsignar) paqData.bolsa_nombre=S.asigMensNombre||'Bolsa';
-          const{data:np}=await sb.from('paquetes').insert(paqData).select().single();
-          if(np) await sb.from('historial_paquetes').insert({
-            paquete_id:np.id,
-            accion:esSinAsignar?'asignado':'asignado',
+
+          // Verificar si ya existe (puede haberse creado antes como sobrante)
+          const{data:existe}=await sb.from('paquetes').select('id,mensajero_simple_id,mensajero_id').eq('num_guia',item.guia).maybeSingle();
+          let paqId;
+          if(existe){
+            // Ya existe — solo actualizar mensajero y estado
+            const upd={estado:nuevoEstado};
+            if(!esSinAsignar){
+              if(S.asigMensTipo==='mensajero'){upd.mensajero_simple_id=S.asigMensId;upd.mensajero_id=null;}
+              else{upd.mensajero_id=S.asigMensId;upd.mensajero_simple_id=null;}
+            }
+            await sb.from('paquetes').update(upd).eq('id',existe.id);
+            paqId=existe.id;
+          } else {
+            const{data:np,error:insErr}=await sb.from('paquetes').insert(paqData).select('id').single();
+            if(insErr) throw insErr;
+            paqId=np?.id;
+          }
+          if(paqId) await sb.from('historial_paquetes').insert({
+            paquete_id:paqId,
+            accion:'asignado',
             estado_nuevo:nuevoEstado,
             mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
             mensajero_simple_nuevo:(!esSinAsignar&&S.asigMensTipo==='mensajero')?S.asigMensId:null,
