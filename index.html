@@ -1518,39 +1518,24 @@ async function confirmarAsignacion(){
       if(s)s.textContent=`${i} de ${total}`;
       try{
         if(item.estado==='sobrante'){
-          const paqData={
-            num_guia:item.guia,contenedor_id:null,destinatario:'SOBRANTE',
-            direccion_original:'Sobrante escaneado',estado:nuevoEstado,
-          };
-          if(!esSinAsignar){
-            if(S.asigMensTipo==='mensajero') paqData.mensajero_simple_id=S.asigMensId;
-            else paqData.mensajero_id=S.asigMensId;
-          }
-          if(esSinAsignar) paqData.bolsa_nombre=S.asigMensNombre||'Bolsa';
+          // Usar RPC que maneja todos los constraints de la tabla paquetes
+          const mensSimple=(!esSinAsignar&&S.asigMensTipo==='mensajero')?S.asigMensId:null;
+          const mensProfile=(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null;
 
-          // Verificar si ya existe (puede haberse creado antes como sobrante)
-          const{data:existe}=await sb.from('paquetes').select('id,mensajero_simple_id,mensajero_id').eq('num_guia',item.guia).maybeSingle();
-          let paqId;
-          if(existe){
-            // Ya existe — solo actualizar mensajero y estado
-            const upd={estado:nuevoEstado};
-            if(!esSinAsignar){
-              if(S.asigMensTipo==='mensajero'){upd.mensajero_simple_id=S.asigMensId;upd.mensajero_id=null;}
-              else{upd.mensajero_id=S.asigMensId;upd.mensajero_simple_id=null;}
-            }
-            await sb.from('paquetes').update(upd).eq('id',existe.id);
-            paqId=existe.id;
-          } else {
-            const{data:np,error:insErr}=await sb.from('paquetes').insert(paqData).select('id').single();
-            if(insErr){console.error('Sobrante insert error:',insErr);throw insErr;}
-            paqId=np?.id;
-          }
+          const{data:paqId,error:rpcErr}=await sb.rpc('insertar_sobrante',{
+            p_num_guia:item.guia,
+            p_mensajero_id:mensProfile,
+            p_mensajero_simple_id:mensSimple,
+            p_importado_por:S.user.id,
+          });
+          if(rpcErr){console.error('Sobrante RPC error:',rpcErr);throw rpcErr;}
+
           if(paqId) await sb.from('historial_paquetes').insert({
             paquete_id:paqId,
             accion:'asignado',
             estado_nuevo:nuevoEstado,
-            mensajero_nuevo:(!esSinAsignar&&S.asigMensTipo==='profile')?S.asigMensId:null,
-            mensajero_simple_nuevo:(!esSinAsignar&&S.asigMensTipo==='mensajero')?S.asigMensId:null,
+            mensajero_nuevo:mensProfile,
+            mensajero_simple_nuevo:mensSimple,
             nota:'Sobrante escaneado',
             realizado_por:S.user.id
           });
