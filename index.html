@@ -2615,11 +2615,18 @@ async function liqHandleFile(file){
       document.getElementById('liqFileLabel').textContent='⏳ Guardando quincena...';
 
       try{
-        const{data:quin,error:quinErr}=await sb.from('quincenas').upsert({
-          mes,año,quincena:quincenaDetectada,
-          nombre:quinNombre,
-          archivo_nombre:file.name,
-        },{onConflict:'mes,año,quincena'}).select().single();
+        // Buscar o crear quincena sin upsert
+        let quin=null;
+        {
+          const{data:existeQ}=await sb.from('quincenas').select('id').eq('mes',mes).eq('año',año).eq('quincena',quincenaDetectada).maybeSingle();
+          if(existeQ){
+            await sb.from('quincenas').update({nombre:quinNombre,archivo_nombre:file.name}).eq('id',existeQ.id);
+            quin=existeQ;
+          } else {
+            const{data:nuevaQ}=await sb.from('quincenas').insert({mes,año,quincena:quincenaDetectada,nombre:quinNombre,archivo_nombre:file.name}).select('id').single();
+            quin=nuevaQ;
+          }
+        }
 
         if(quin?.id){
           S._liqQuinId=quin.id;
@@ -2651,7 +2658,7 @@ async function liqHandleFile(file){
             const totalEnt=Object.values(diasSet).reduce((s,d)=>s+d.entregas,0);
             const totalBruto=Object.values(diasSet).reduce((s,d)=>s+d.valor,0);
 
-            // Upsert mensajero en quincena
+            // Insertar mensajero en quincena (ya limpiamos antes así que siempre es insert)
             const payload={
               quincena_id:quin.id,
               nombre_display:m.nombre,
@@ -2662,30 +2669,9 @@ async function liqHandleFile(file){
             };
             if(m.id) payload.mensajero_id=m.id;
 
-            let qmId=null;
-            if(m.id){
-              // Con mensajero_id: usar upsert por (quincena_id, mensajero_id)
-              const{data:qm}=await sb.from('quincena_mensajeros')
-                .upsert({...payload},{onConflict:'quincena_id,mensajero_id'})
-                .select('id').single();
-              qmId=qm?.id;
-            } else {
-              // Sin mensajero_id: buscar por nombre_display para actualizar en vez de duplicar
-              const{data:existe}=await sb.from('quincena_mensajeros')
-                .select('id').eq('quincena_id',quin.id).eq('nombre_display',m.nombre).maybeSingle();
-              if(existe){
-                await sb.from('quincena_mensajeros').update({
-                  correo_xcargo:payload.correo_xcargo,
-                  total_entregas:payload.total_entregas,
-                  total_bruto:payload.total_bruto,
-                  en_bd:false,
-                }).eq('id',existe.id);
-                qmId=existe.id;
-              } else {
-                const{data:nuevo}=await sb.from('quincena_mensajeros').insert(payload).select('id').single();
-                qmId=nuevo?.id;
-              }
-            }
+            const{data:qmNew,error:qmErr}=await sb.from('quincena_mensajeros').insert(payload).select('id').single();
+            if(qmErr){console.error('Error insertando mensajero quincena:',m.nombre,qmErr);continue;}
+            const qmId=qmNew?.id;
 
             // Guardar detalle día a día
             if(qmId){
@@ -2864,24 +2850,23 @@ async function confirmarLiquidacion(){
         try{
           // 1. Crear/obtener quincena
           const quinNombre=`${MESES_ES[p.mes]} ${p.año} · ${p.quincena}`;
-          const{data:quin}=await sb.from('quincenas').upsert({
-            mes:p.mes, año:p.año, quincena:p.quincena,
-            nombre:quinNombre,
-            archivo_nombre:S._liqData?.archivo||null,
-          },{onConflict:'mes,año,quincena'}).select().single();
+          let quin=null;
+          {
+            const{data:existeQ}=await sb.from('quincenas').select('id').eq('mes',p.mes).eq('año',p.año).eq('quincena',p.quincena).maybeSingle();
+            if(existeQ){quin=existeQ;}
+            else{const{data:nQ}=await sb.from('quincenas').insert({mes:p.mes,año:p.año,quincena:p.quincena,nombre:quinNombre,archivo_nombre:S._liqData?.archivo||null}).select('id').single();quin=nQ;}
+          }
 
           // 2. Crear/actualizar entrada del mensajero en quincena_mensajeros
           let qmEntry=null;
           if(quin?.id&&p.mensDBId){
-            const{data:qm}=await sb.from('quincena_mensajeros').upsert({
-              quincena_id:quin.id,
-              mensajero_id:p.mensDBId,
-              nombre_display:p.mensajero,
-              correo_xcargo:Object.values(S._liqData?.mensajerosMap||{}).find(m=>m.nombre===p.mensajero)?.correo||null,
-              total_entregas:p.resumen.reduce((s,r)=>s+r.paquetes,0),
-              total_bruto:p.totalBruto,
-              en_bd:true,
-            },{onConflict:'quincena_id,mensajero_id'}).select().single();
+            let{data:qm}=await sb.from('quincena_mensajeros').select('id').eq('quincena_id',quin.id).eq('mensajero_id',p.mensDBId).maybeSingle();
+            if(qm){
+              await sb.from('quincena_mensajeros').update({nombre_display:p.mensajero,total_entregas:p.resumen.reduce((s,r)=>s+r.paquetes,0),total_bruto:p.totalBruto,en_bd:true}).eq('id',qm.id);
+            } else {
+              const{data:nQm}=await sb.from('quincena_mensajeros').insert({quincena_id:quin.id,mensajero_id:p.mensDBId,nombre_display:p.mensajero,correo_xcargo:Object.values(S._liqData?.mensajerosMap||{}).find(m=>m.nombre===p.mensajero)?.correo||null,total_entregas:p.resumen.reduce((s,r)=>s+r.paquetes,0),total_bruto:p.totalBruto,en_bd:true}).select('id').single();
+              qm=nQm;
+            }
             qmEntry=qm;
 
             // Guardar detalle día a día
