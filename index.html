@@ -2354,84 +2354,134 @@ async function descargarReciboDesdequincena(qmId){
 
 // ── PDF Resumen de quincena para contabilidad ──
 async function descargarResumenQuincena(quinId, quinNombre){
+  // Cargar mensajeros de la quincena
   const{data:mensajeros}=await sb.from('quincena_mensajeros')
-    .select('nombre_display,total_entregas,total_bruto,en_bd,mensajero_id,mensajeros(banco,num_cuenta,tipo_cuenta)')
+    .select('id,nombre_display,total_entregas,total_bruto,en_bd,mensajero_id,mensajeros(banco,num_cuenta,tipo_cuenta)')
     .eq('quincena_id',quinId)
     .order('total_bruto',{ascending:false});
   if(!mensajeros?.length){toast('Sin datos','wa');return;}
+
+  // Obtener datos de la quincena para consultar descuentos
+  const{data:quinData}=await sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single();
+
+  // Cargar descuentos pendientes de todos los mensajeros con ID de esta quincena
+  let descMap={};
+  if(quinData){
+    const mensIds=mensajeros.filter(m=>m.mensajero_id).map(m=>m.mensajero_id);
+    if(mensIds.length){
+      const{data:descs}=await sb.from('descuentos')
+        .select('mensajero_id,valor')
+        .in('mensajero_id',mensIds)
+        .eq('mes_quincena',quinData.mes)
+        .eq('año_quincena',quinData.año)
+        .eq('quincena',quinData.quincena)
+        .eq('aplicado',false);
+      (descs||[]).forEach(d=>{
+        descMap[d.mensajero_id]=(descMap[d.mensajero_id]||0)+Number(d.valor||0);
+      });
+    }
+  }
+
+  // Calcular totales netos
+  const mensajerosConNeto=mensajeros.map(m=>({
+    ...m,
+    total_descuentos:descMap[m.mensajero_id]||0,
+    total_neto:Number(m.total_bruto||0)-(descMap[m.mensajero_id]||0),
+  }));
 
   const{jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   const PW=297,ML=12,MR=12,CW=PW-ML-MR;
   let y=12;
-  const DARK=[15,23,42],GRAY=[100,116,139],LIGHT=[241,245,249],GREEN=[16,185,129],BLUE=[59,130,246],WHITE=[255,255,255];
+  const DARK=[15,23,42],GRAY=[100,116,139],LIGHT=[241,245,249],GREEN=[16,185,129],BLUE=[59,130,246],WHITE=[255,255,255],RED=[239,68,68];
   const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
   // Encabezado
-  doc.setFillColor(...DARK);doc.rect(0,0,PW,32,'F');
+  doc.setFillColor(...DARK);doc.rect(0,0,PW,30,'F');
   doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text('STC Express',ML,y+11);
+  doc.text('STC Express',ML,y+10);
   doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
-  doc.text('Resumen de nómina para contabilidad',ML,y+19);
+  doc.text('Resumen de nómina para contabilidad',ML,y+18);
   doc.setFontSize(8);doc.setTextColor(148,163,184);
-  doc.text(fecha,PW-MR,y+11,{align:'right'});
-  doc.setFillColor(...BLUE);doc.roundedRect(PW-MR-55,y+14,55,11,2,2,'F');
+  doc.text(fecha,PW-MR,y+10,{align:'right'});
+  doc.setFillColor(...BLUE);doc.roundedRect(PW-MR-60,y+12,60,11,2,2,'F');
   doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text(quinNombre.slice(0,25),PW-MR-27.5,y+21,{align:'center'});
-  y=38;
+  doc.text(quinNombre.slice(0,28),PW-MR-30,y+19,{align:'center'});
+  y=36;
 
-  // Totales
-  const totalBruto=mensajeros.reduce((s,m)=>s+Number(m.total_bruto||0),0);
-  const totalEntr=mensajeros.reduce((s,m)=>s+Number(m.total_entregas||0),0);
+  // Totales resumen
+  const totalBruto=mensajerosConNeto.reduce((s,m)=>s+Number(m.total_bruto||0),0);
+  const totalDescuentosGlobal=mensajerosConNeto.reduce((s,m)=>s+m.total_descuentos,0);
+  const totalNeto=mensajerosConNeto.reduce((s,m)=>s+m.total_neto,0);
+  const totalEntr=mensajerosConNeto.reduce((s,m)=>s+Number(m.total_entregas||0),0);
+
   doc.setFillColor(...LIGHT);doc.roundedRect(ML,y,CW,14,2,2,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...DARK);
-  doc.text(`Total a pagar: ${fmtCOP(totalBruto)}`,ML+4,y+9);
+  doc.text(`Bruto: ${fmtCOP(totalBruto)}`,ML+4,y+6);
+  if(totalDescuentosGlobal>0){
+    doc.setTextColor(...RED);
+    doc.text(`Descuentos: -${fmtCOP(totalDescuentosGlobal)}`,ML+70,y+6);
+  }
+  doc.setTextColor(...GREEN);
+  doc.text(`TOTAL NETO: ${fmtCOP(totalNeto)}`,ML+4,y+12);
   doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GRAY);
-  doc.text(`${mensajeros.length} mensajeros · ${totalEntr.toLocaleString()} entregas`,PW-MR-4,y+9,{align:'right'});
+  doc.text(`${mensajerosConNeto.length} mensajeros · ${totalEntr.toLocaleString()} entregas`,PW-MR-4,y+9,{align:'right'});
   y+=20;
 
   // Cabecera tabla
   doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
-  doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.setFontSize(6.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
   doc.text('#',ML+2,y+4.8);
   doc.text('Mensajero',ML+10,y+4.8);
-  doc.text('Banco',ML+95,y+4.8);
-  doc.text('Cuenta',ML+145,y+4.8);
-  doc.text('Entregas',ML+205,y+4.8,{align:'center'});
-  doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
+  doc.text('Banco',ML+90,y+4.8);
+  doc.text('Cuenta',ML+135,y+4.8);
+  doc.text('Entregas',ML+190,y+4.8,{align:'center'});
+  doc.text('Bruto',ML+218,y+4.8,{align:'right'});
+  doc.text('Desc.',ML+240,y+4.8,{align:'right'});
+  doc.text('NETO',PW-MR-2,y+4.8,{align:'right'});
   y+=7;
 
-  mensajeros.forEach((m,i)=>{
-    if(y>190){
+  mensajerosConNeto.forEach((m,i)=>{
+    if(y>192){
       doc.addPage();y=12;
       doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
-      doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+      doc.setFontSize(6.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
       doc.text('#',ML+2,y+4.8);doc.text('Mensajero',ML+10,y+4.8);
-      doc.text('Banco',ML+95,y+4.8);doc.text('Cuenta',ML+145,y+4.8);
-      doc.text('Entregas',ML+205,y+4.8,{align:'center'});
-      doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
+      doc.text('Banco',ML+90,y+4.8);doc.text('Cuenta',ML+135,y+4.8);
+      doc.text('Entregas',ML+190,y+4.8,{align:'center'});
+      doc.text('Bruto',ML+218,y+4.8,{align:'right'});
+      doc.text('Desc.',ML+240,y+4.8,{align:'right'});
+      doc.text('NETO',PW-MR-2,y+4.8,{align:'right'});
       y+=7;
     }
     const bg=i%2===0?WHITE:[248,250,252];
     doc.setFillColor(...bg);doc.rect(ML,y,CW,7,'F');
     doc.setDrawColor(...LIGHT);doc.setLineWidth(0.2);doc.line(ML,y+7,PW-MR,y+7);
-    doc.setFontSize(7);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
+    doc.setFontSize(6.5);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
     doc.text(String(i+1),ML+2,y+4.8);
     doc.setTextColor(...DARK);
-    const nom=m.nombre_display.length>35?m.nombre_display.slice(0,34)+'…':m.nombre_display;
+    const nom=m.nombre_display.length>32?m.nombre_display.slice(0,31)+'…':m.nombre_display;
     doc.text(nom,ML+10,y+4.8);
-    // Banco y cuenta
     const banco=m.mensajeros?.banco||'—';
     const cuenta=m.mensajeros?.num_cuenta||'—';
     const tipo=m.mensajeros?.tipo_cuenta?` (${m.mensajeros.tipo_cuenta})`:'';
     doc.setTextColor(...GRAY);
-    doc.text((banco+tipo).slice(0,22),ML+95,y+4.8);
+    doc.text((banco+tipo).slice(0,20),ML+90,y+4.8);
     doc.setTextColor(...DARK);doc.setFont('helvetica','bold');
-    doc.text(cuenta.slice(0,20),ML+145,y+4.8);
-    doc.setTextColor(...BLUE);doc.setFont('helvetica','bold');
-    doc.text(String(m.total_entregas||0),ML+205,y+4.8,{align:'center'});
-    doc.setTextColor(...GREEN);
-    doc.text(fmtCOP(m.total_bruto),PW-MR-2,y+4.8,{align:'right'});
+    doc.text(cuenta.slice(0,18),ML+135,y+4.8);
+    doc.setTextColor(...BLUE);doc.setFont('helvetica','normal');
+    doc.text(String(m.total_entregas||0),ML+190,y+4.8,{align:'center'});
+    doc.setTextColor(150,150,150);
+    doc.text(fmtCOP(m.total_bruto),ML+218,y+4.8,{align:'right'});
+    if(m.total_descuentos>0){
+      doc.setTextColor(...RED);
+      doc.text(`-${fmtCOP(m.total_descuentos)}`,ML+240,y+4.8,{align:'right'});
+    } else {
+      doc.setTextColor(...GRAY);
+      doc.text('—',ML+240,y+4.8,{align:'right'});
+    }
+    doc.setTextColor(...GREEN);doc.setFont('helvetica','bold');
+    doc.text(fmtCOP(m.total_neto),PW-MR-2,y+4.8,{align:'right'});
     y+=7;
   });
 
@@ -2439,11 +2489,11 @@ async function descargarResumenQuincena(quinId, quinNombre){
   y+=3;
   doc.setFillColor(...GREEN);doc.roundedRect(ML,y,CW,9,2,2,'F');
   doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text(`TOTAL A PAGAR: ${fmtCOP(totalBruto)}`,ML+CW/2,y+6,{align:'center'});
+  doc.text(`TOTAL NETO A PAGAR: ${fmtCOP(totalNeto)}`,ML+CW/2,y+6,{align:'center'});
 
   // Pie
   doc.setFontSize(6);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
-  doc.text(`STC Express · ${quinNombre} · Generado ${fecha}`,ML,292);
+  doc.text(`STC Express · ${quinNombre} · Generado ${fecha}`,ML,202);
 
   const arch=quinNombre.replace(/[^a-zA-Z0-9]/g,'_');
   doc.save(`Nomina_${arch}.pdf`);
@@ -3065,11 +3115,12 @@ function generarReciboPDF(p, mens, liqId){
   const rangoStr=rango.desde.toLocaleDateString('es-CO',opts)+' – '+rango.hasta.toLocaleDateString('es-CO',opts);
   doc.text(`Período: ${rangoStr}`, ML+4, y+22);
 
-  // Quincena badge
+  // Badge quincena — más ancho para que quepa "Primera quincena"
+  const quinLabel=`${MESES_ES[p.mes]} ${p.año} · ${esQ1?'Q1':'Q2'}`;
   doc.setFillColor(...BLUE);
-  doc.roundedRect(PW-MR-32,y+4,32,10,2,2,'F');
-  setFont(8,'bold',WHITE);
-  doc.text(`${MESES_ES[p.mes]} ${p.año} · ${p.quincena}`,PW-MR-32+16,y+10.5,{align:'center'});
+  doc.roundedRect(PW-MR-45,y+4,45,13,2,2,'F');
+  doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(quinLabel,PW-MR-45+22.5,y+12,{align:'center'});
 
   y+=33;
 
@@ -3191,13 +3242,13 @@ function generarReciboPDF(p, mens, liqId){
 
   // ── Datos bancarios ──
   if(mens?.banco||mens?.num_cuenta){
-    if(y>PH-25){doc.addPage();y=MT;}
+    if(y>PH-30){doc.addPage();y=MT;}
     doc.setFillColor(248,255,250);
     doc.roundedRect(ML,y,CW,15,2,2,'F');
     doc.setDrawColor(16,185,129);doc.setLineWidth(0.4);
     doc.roundedRect(ML,y,CW,15,2,2,'S');
     setFont(7,'bold',DARK);
-    doc.text('📋 Datos para consignación',ML+3,y+5.5);
+    doc.text('Datos para consignacion',ML+3,y+5.5);
     setFont(7,'normal',GRAY);
     const tipoCta=mens.tipo_cuenta?` · Cta ${mens.tipo_cuenta}`:'';
     doc.text(`${mens.banco||'—'}${tipoCta}`,ML+3,y+11);
@@ -3205,6 +3256,45 @@ function generarReciboPDF(p, mens, liqId){
     doc.text(mens.num_cuenta||'—',PW-MR-3,y+11,{align:'right'});
     y+=19;
   }
+
+  // ── Texto legal ──
+  if(y>PH-55){doc.addPage();y=MT;}
+
+  // Determinar quincena en texto
+  const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
+  const quinTexto=esQ1?'PRIMERA QUINCENA':'SEGUNDA QUINCENA';
+  const mesTexto=(MESES_ES[p.mes]||'').toUpperCase();
+  const valorLetras=numALetras(p.totalNeto);
+
+  const textoLegal=[
+    `HE RECIBIDO DE LA EMPRESA STC EXPRESS MENSAJERIA SAS, LA SUMA DE`,
+    `${valorLetras} ($${Number(p.totalNeto).toLocaleString('es-CO')}),`,
+    `CORRESPONDIENTE A LA ${quinTexto} DEL MES DE ${mesTexto} DE ${p.año}.`,
+    '',
+    `DE NO RECIBIR NINGUNA NOVEDAD POR PARTE DEL MENSAJERO DURANTE LOS 2 DIAS HABILES`,
+    `DE GENERACION DE ESTE RECIBO, SE DA POR ENTENDIDO QUE SE RECIBIO CONFORME.`,
+  ];
+
+  doc.setFillColor(248,248,255);
+  doc.roundedRect(ML,y,CW,30,2,2,'F');
+  doc.setDrawColor(200,200,220);doc.setLineWidth(0.3);
+  doc.roundedRect(ML,y,CW,30,2,2,'S');
+  setFont(6.5,'normal',[40,40,80]);
+  let yLegal=y+5;
+  textoLegal.forEach(linea=>{
+    if(linea) doc.text(linea,ML+3,yLegal);
+    yLegal+=4;
+  });
+  y+=34;
+
+  // ── Línea de firma ──
+  if(y>PH-20){doc.addPage();y=MT;}
+  const firmaCedula=mens?.num_documento?`CC ${mens.num_documento}`:'';
+  setFont(7,'normal',GRAY);
+  doc.text('Firma: _________________________________',ML,y+8);
+  doc.text(`${mens?.nombre_completo||p.mensajero}`,ML,y+14);
+  if(firmaCedula){doc.text(firmaCedula,ML,y+18);}
+  doc.text(`Fecha: ______ / ______ / ________`,PW-MR-3,y+8,{align:'right'});
 
   // ══════════════════════════════════
   // PIE DE PÁGINA
@@ -4563,6 +4653,35 @@ async function descargarReciboGuardado(liqId){
   };
   generarReciboPDF(p,mens,liqId);
   toast('PDF generado ✓','ok');
+}
+
+// ── Número a letras (pesos colombianos) ──
+function numALetras(n){
+  const u=['','UN','DOS','TRES','CUATRO','CINCO','SEIS','SIETE','OCHO','NUEVE',
+           'DIEZ','ONCE','DOCE','TRECE','CATORCE','QUINCE','DIECISÉIS','DIECISIETE','DIECIOCHO','DIECINUEVE'];
+  const d=['','','VEINTE','TREINTA','CUARENTA','CINCUENTA','SESENTA','SETENTA','OCHENTA','NOVENTA'];
+  const c=['','CIENTO','DOSCIENTOS','TRESCIENTOS','CUATROCIENTOS','QUINIENTOS','SEISCIENTOS','SETECIENTOS','OCHOCIENTOS','NOVECIENTOS'];
+  function grupo(n){
+    const s=String(Math.floor(n)).padStart(3,'0');
+    const c1=Number(s[0]),d1=Number(s[1]),u1=Number(s[2]);
+    let r='';
+    if(c1>0) r+=(c1===1&&d1===0&&u1===0?'CIEN':c[c1])+' ';
+    if(d1===1) r+=u[10+u1]+' ';
+    else if(d1===2) r+=(u1===0?'VEINTE':'VEINTI'+u[u1])+' ';
+    else if(d1>2) r+=d[d1]+(u1>0?' Y '+u[u1]:'')+' ';
+    else if(d1===0&&u1>0) r+=u[u1]+' ';
+    return r.trim();
+  }
+  n=Math.round(Number(n));
+  if(n===0) return 'CERO PESOS M/CTE';
+  let r='';
+  const mill=Math.floor(n/1000000);
+  const mil=Math.floor((n%1000000)/1000);
+  const res=n%1000;
+  if(mill>0) r+=(mill===1?'UN MILLÓN':grupo(mill)+' MILLONES')+' ';
+  if(mil>0) r+=(mil===1?'MIL':grupo(mil)+' MIL')+' ';
+  if(res>0) r+=grupo(res);
+  return r.trim()+' PESOS M/CTE';
 }
 
 // ══════════════════════════════════════════════════════════════════
