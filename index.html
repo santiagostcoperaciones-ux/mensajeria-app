@@ -299,6 +299,8 @@ async function go(page,push=true){
       case 'nomina-desc-individual': await pgDescIndividual();break;
       case 'nomina-desc-grupal': await pgDescGrupal();break;
       case 'ver-recibo':         await verReciboGuardado(S._verReciboId);break;
+      case 'quincena-detalle':   await pgQuincenaDetalle();break;
+      case 'quincena-mensajero-recibo': await pgQuinMensajeroRecibo();break;
       // ── Usuarios ──
       case 'usuarios':           await pgUsuarios();break;
       case 'usuario-detalle':    await pgUsuarioDetalle();break;
@@ -2130,50 +2132,280 @@ async function pgNominaHome(){
   setBar('Nómina','STC Express');
   setP(loader());
 
-  const[{data:liqRecientes},{count:totalDescPend}]=await Promise.all([
-    sb.from('liquidaciones')
-      .select('id,mensajero_id,mes,año,quincena,total_neto,total_bruto,total_descuentos,created_at,mensajeros(nombre_completo,num_documento,placa)')
-      .order('created_at',{ascending:false}).limit(50),
+  const[{data:quincenas},{count:totalDescPend}]=await Promise.all([
+    sb.from('quincenas').select('id,mes,año,quincena,nombre,archivo_nombre,total_entregas,total_mensajeros,created_at').order('año',{ascending:false}).order('mes',{ascending:false}).order('quincena',{ascending:false}),
     sb.from('descuentos').select('id',{count:'exact',head:true}).eq('aplicado',false),
   ]);
 
   let h=`
     <div class="stat-row" style="margin-bottom:12px">
       <div class="stat" onclick="go('nomina-liquidar')" style="cursor:pointer">
-        <div style="font-size:22px;margin-bottom:4px">📄</div>
-        <div class="stat-l">Liquidar</div>
+        <div style="font-size:22px;margin-bottom:4px">📂</div>
+        <div class="stat-l">Cargar<br>xcargo</div>
       </div>
       <div class="stat" onclick="go('nomina-descuentos')" style="cursor:pointer">
         <div class="stat-n" style="color:${(totalDescPend||0)>0?'var(--amb)':'var(--grn)'}">${totalDescPend||0}</div>
         <div class="stat-l">Descuentos<br>pendientes</div>
       </div>
     </div>
-    <button class="btn btn-p btn-w" style="margin-bottom:14px" onclick="go('nomina-liquidar')">+ Nueva liquidación</button>
   `;
 
-  if(liqRecientes?.length){
-    h+=`<div class="sec-title">Recibos generados (${liqRecientes.length})</div>`;
-    liqRecientes.forEach(l=>{
-      const docNum=l.mensajeros?.num_documento||'';
-      const placa=l.mensajeros?.placa||'';
-      h+=`<div class="card" onclick="verReciboGuardado('${l.id}')" style="cursor:pointer">
+  if(quincenas?.length){
+    h+=`<div class="sec-title">Quincenas (${quincenas.length})</div>`;
+    quincenas.forEach(q=>{
+      h+=`<div class="card" onclick="S._quinId='${q.id}';S._quinNombre='${esc(q.nombre)}';go('quincena-detalle')" style="cursor:pointer">
         <div class="card-row">
-          <div class="ci" style="background:rgba(16,185,129,.12);color:var(--grn);font-size:18px">📋</div>
+          <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc);font-size:22px">📁</div>
           <div style="flex:1;min-width:0">
-            <div style="font-weight:600;font-size:var(--fsm)">${esc(l.mensajeros?.nombre_completo||'—')}</div>
-            <div style="font-size:var(--fss);color:var(--tx2)">${MESES_ES[l.mes]} ${l.año} · <span class="chip">${l.quincena}</span>${placa?' · 🏍 '+esc(placa):''}</div>
+            <div style="font-weight:700;font-size:var(--fsm)">${esc(q.nombre)}</div>
+            <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">
+              ${q.total_mensajeros} mensajero${q.total_mensajeros!==1?'s':''} · ${(q.total_entregas||0).toLocaleString()} entregas
+            </div>
+            ${q.archivo_nombre?`<div style="font-size:var(--fss);color:var(--tx3);margin-top:1px">📋 ${esc(q.archivo_nombre)}</div>`:''}
           </div>
           <div style="text-align:right;flex-shrink:0">
-            <div style="font-weight:700;color:var(--grn);font-family:var(--mo)">${fmtCOP(l.total_neto)}</div>
-            <div style="font-size:var(--fss);color:var(--tx3)">${fmtDate(l.created_at)}</div>
+            <div style="font-size:var(--fss);color:var(--tx3)">${fmtDate(q.created_at)}</div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;color:var(--tx3);margin-top:4px"><path d="M9 18l6-6-6-6"/></svg>
           </div>
         </div>
       </div>`;
     });
-  }else{
-    h+=`<p class="empty">Sin liquidaciones aún</p>`;
+  } else {
+    h+=`<div style="text-align:center;padding:30px 14px">
+      <div style="font-size:36px;margin-bottom:10px">📂</div>
+      <p style="font-weight:600;margin-bottom:4px">Sin quincenas aún</p>
+      <p style="color:var(--tx2);font-size:var(--fss);margin-bottom:16px">Carga el reporte xcargo para empezar</p>
+      <button class="btn btn-p" onclick="go('nomina-liquidar')">📂 Cargar reporte xcargo</button>
+    </div>`;
   }
   setP(h);
+}
+
+// ── Detalle de quincena — lista de mensajeros con sus totales ──
+async function pgQuincenaDetalle(){
+  const quinId=S._quinId;
+  const quinNombre=S._quinNombre||'Quincena';
+  if(!quinId){go('nomina-home');return;}
+  setBar(quinNombre,'Nómina');
+  document.getElementById('barRight').innerHTML=`
+    <button class="btn btn-o btn-s" style="font-size:10px" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ Resumen</button>`;
+  setP(loader());
+
+  const{data:mensajeros}=await sb.from('quincena_mensajeros')
+    .select('id,mensajero_id,nombre_display,correo_xcargo,total_entregas,total_bruto,en_bd')
+    .eq('quincena_id',quinId)
+    .order('total_bruto',{ascending:false});
+
+  if(!mensajeros?.length){setP('<p class="empty">Sin datos para esta quincena</p>');return;}
+
+  const totalBruto=mensajeros.reduce((s,m)=>s+Number(m.total_bruto||0),0);
+  const totalEntregas=mensajeros.reduce((s,m)=>s+Number(m.total_entregas||0),0);
+
+  let h=`
+    <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:var(--r2);padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:var(--fss);color:var(--tx3)">Total a pagar</div>
+        <div style="font-weight:700;font-size:clamp(18px,5vw,22px);font-family:var(--mo);color:var(--grn)">${fmtCOP(totalBruto)}</div>
+        <div style="font-size:var(--fss);color:var(--tx3)">${mensajeros.length} mensajeros · ${totalEntregas.toLocaleString()} entregas</div>
+      </div>
+      <button class="btn btn-p btn-s" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ PDF Contabilidad</button>
+    </div>
+    <div class="sec-title">Mensajeros</div>
+  `;
+
+  mensajeros.forEach(m=>{
+    const liqBtn=m.mensajero_id?`<button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto;flex-shrink:0" onclick="event.stopPropagation();S._quinMensId='${m.id}';S._quinMensNombre='${esc(m.nombre_display)}';go('quincena-mensajero-recibo')">Ver recibo</button>`:'';
+    h+=`<div class="card" onclick="S._quinMensId='${m.id}';S._quinMensNombre='${esc(m.nombre_display)}';go('quincena-mensajero-recibo')" style="cursor:pointer">
+      <div class="card-row">
+        <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur);font-weight:700;font-size:13px;font-family:var(--mo)">
+          ${esc(m.nombre_display.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase())}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:var(--fsm);display:flex;align-items:center;gap:6px">
+            ${esc(m.nombre_display)}
+            ${!m.en_bd?'<span style="font-size:9px;background:rgba(245,158,11,.2);color:var(--amb);padding:1px 5px;border-radius:4px">sin BD</span>':''}
+          </div>
+          <div style="font-size:var(--fss);color:var(--tx3)">${m.total_entregas} entregas</div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-weight:700;color:var(--grn);font-family:var(--mo)">${fmtCOP(m.total_bruto)}</div>
+          ${m.mensajero_id?`<div style="font-size:var(--fss);color:var(--acc);margin-top:2px">Ver recibo →</div>`:''}
+        </div>
+      </div>
+    </div>`;
+  });
+  setP(h);
+}
+
+// ── Recibo de mensajero dentro de una quincena ──
+async function pgQuinMensajeroRecibo(){
+  const qmId=S._quinMensId;
+  const nombre=S._quinMensNombre||'Mensajero';
+  if(!qmId){go('nomina-home');return;}
+  setBar(nombre,S._quinNombre||'Quincena');
+  setP(loader());
+
+  const[{data:qm},{data:detalle},{data:liq}]=await Promise.all([
+    sb.from('quincena_mensajeros').select('*').eq('id',qmId).single(),
+    sb.from('quincena_detalle').select('dia,fecha,entregas,valor').eq('quincena_mensajero_id',qmId).order('dia'),
+    // Buscar liquidación formal si existe
+    sb.from('liquidaciones').select('id,total_bruto,total_descuentos,total_neto,quincena,mes,año').eq('quincena_mensajero_id',qmId).maybeSingle(),
+  ]);
+
+  const mens=qm||{};
+  let h=`
+    <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:14px;margin-bottom:12px">
+      <div style="font-weight:700;font-size:clamp(15px,4vw,17px);margin-bottom:6px">${esc(mens.nombre_display||nombre)}</div>
+      ${mens.correo_xcargo?`<div style="font-size:var(--fss);color:var(--tx3);margin-bottom:8px">${esc(mens.correo_xcargo)}</div>`:''}
+      <div class="stat-row" style="margin-bottom:0">
+        <div class="stat"><div class="stat-n" style="color:var(--acc)">${mens.total_entregas||0}</div><div class="stat-l">Entregas</div></div>
+        <div class="stat"><div class="stat-n" style="color:var(--grn);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(mens.total_bruto)}</div><div class="stat-l">Total bruto</div></div>
+      </div>
+    </div>
+  `;
+
+  if(detalle?.length){
+    h+=`<div class="sec-title">Detalle día a día</div>
+    <div style="overflow-x:auto;margin-bottom:12px">
+      <table class="tbl">
+        <thead><tr><th>Día</th><th>Fecha</th><th>Entregas</th><th>Valor</th></tr></thead>
+        <tbody>
+          ${detalle.map(d=>`<tr>
+            <td>${d.dia}</td>
+            <td style="color:var(--tx2)">${d.fecha?new Date(d.fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'}):'—'}</td>
+            <td style="font-family:var(--mo);color:var(--acc)">${d.entregas}</td>
+            <td style="font-family:var(--mo);color:var(--grn)">${fmtCOP(d.valor)}</td>
+          </tr>`).join('')}
+          <tr style="font-weight:700;background:var(--bg2)">
+            <td colspan="2">Total</td>
+            <td style="font-family:var(--mo)">${detalle.reduce((s,d)=>s+d.entregas,0)}</td>
+            <td style="font-family:var(--mo);color:var(--grn)">${fmtCOP(mens.total_bruto)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>`;
+  }
+
+  h+=`<div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn btn-g" style="flex:2" onclick="descargarReciboDesdequincena('${qmId}')">⬇ Descargar PDF recibo</button>
+    <button class="btn btn-o btn-s" style="flex:1" onclick="go('quincena-detalle')">← Volver</button>
+  </div>`;
+  setP(h);
+  S._qmData={qm,detalle:detalle||[]};
+}
+
+async function descargarReciboDesdequincena(qmId){
+  const r=S._qmData;
+  if(!r){toast('Sin datos','er');return;}
+  const{qm,detalle}=r;
+  // Obtener datos del mensajero de BD si existe
+  let mens={nombre_completo:qm.nombre_display};
+  if(qm.mensajero_id){
+    const{data:m}=await sb.from('mensajeros').select('nombre_completo,num_documento,telefono,placa').eq('id',qm.mensajero_id).single();
+    if(m) mens=m;
+  }
+  // Construir quincena_id para obtener mes/año/quincena
+  const{data:quinData}=await sb.from('quincenas').select('mes,año,quincena').eq('id',qm.quincena_id).single();
+  const p={
+    mensajero:mens.nombre_completo||qm.nombre_display,
+    mes:quinData?.mes||new Date().getMonth()+1,
+    año:quinData?.año||new Date().getFullYear(),
+    quincena:quinData?.quincena==='Q1'?'Primera quincena':'Segunda quincena',
+    resumen:detalle.map(d=>({dia:d.dia,paquetes:d.entregas,valor:d.valor})),
+    totalBruto:Number(qm.total_bruto),
+    totalDescuentos:0,
+    totalNeto:Number(qm.total_bruto),
+    descuentosPend:[],
+  };
+  generarReciboPDF(p,mens,qmId);
+  toast('PDF generado ✓','ok');
+}
+
+// ── PDF Resumen de quincena para contabilidad ──
+async function descargarResumenQuincena(quinId, quinNombre){
+  const{data:mensajeros}=await sb.from('quincena_mensajeros')
+    .select('nombre_display,total_entregas,total_bruto,en_bd')
+    .eq('quincena_id',quinId)
+    .order('total_bruto',{ascending:false});
+  if(!mensajeros?.length){toast('Sin datos','wa');return;}
+
+  const{jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const PW=210,ML=14,MR=14,CW=PW-ML-MR;
+  let y=14;
+  const DARK=[15,23,42],GRAY=[100,116,139],LIGHT=[241,245,249],GREEN=[16,185,129],BLUE=[59,130,246],WHITE=[255,255,255];
+  const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+
+  // Encabezado
+  doc.setFillColor(...DARK);doc.rect(0,0,PW,32,'F');
+  doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('STC Express',ML,y+11);
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
+  doc.text('Resumen de nómina para contabilidad',ML,y+19);
+  doc.setFontSize(8);doc.setTextColor(148,163,184);
+  doc.text(fecha,PW-MR,y+11,{align:'right'});
+  doc.setFillColor(...BLUE);doc.roundedRect(PW-MR-55,y+14,55,11,2,2,'F');
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(quinNombre.slice(0,25),PW-MR-27.5,y+21,{align:'center'});
+  y=38;
+
+  // Totales
+  const totalBruto=mensajeros.reduce((s,m)=>s+Number(m.total_bruto||0),0);
+  const totalEntr=mensajeros.reduce((s,m)=>s+Number(m.total_entregas||0),0);
+  doc.setFillColor(...LIGHT);doc.roundedRect(ML,y,CW,14,2,2,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...DARK);
+  doc.text(`Total a pagar: ${fmtCOP(totalBruto)}`,ML+4,y+9);
+  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GRAY);
+  doc.text(`${mensajeros.length} mensajeros · ${totalEntr.toLocaleString()} entregas`,PW-MR-4,y+9,{align:'right'});
+  y+=20;
+
+  // Cabecera tabla
+  doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
+  doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('#',ML+2,y+4.8);
+  doc.text('Mensajero',ML+10,y+4.8);
+  doc.text('Entregas',ML+110,y+4.8,{align:'center'});
+  doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
+  y+=7;
+
+  mensajeros.forEach((m,i)=>{
+    if(y>275){
+      doc.addPage();y=14;
+      doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
+      doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+      doc.text('#',ML+2,y+4.8);doc.text('Mensajero',ML+10,y+4.8);
+      doc.text('Entregas',ML+110,y+4.8,{align:'center'});
+      doc.text('Total a pagar',PW-MR-2,y+4.8,{align:'right'});
+      y+=7;
+    }
+    const bg=i%2===0?WHITE:[248,250,252];
+    doc.setFillColor(...bg);doc.rect(ML,y,CW,7,'F');
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.2);doc.line(ML,y+7,PW-MR,y+7);
+    doc.setFontSize(7);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
+    doc.text(String(i+1),ML+2,y+4.8);
+    doc.setTextColor(...DARK);
+    const nom=m.nombre_display.length>40?m.nombre_display.slice(0,39)+'…':m.nombre_display;
+    doc.text(nom,ML+10,y+4.8);
+    doc.setTextColor(...BLUE);doc.setFont('helvetica','bold');
+    doc.text(String(m.total_entregas||0),ML+110,y+4.8,{align:'center'});
+    doc.setTextColor(...GREEN);
+    doc.text(fmtCOP(m.total_bruto),PW-MR-2,y+4.8,{align:'right'});
+    y+=7;
+  });
+
+  // Total final
+  y+=3;
+  doc.setFillColor(...GREEN);doc.roundedRect(ML,y,CW,9,2,2,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(`TOTAL A PAGAR: ${fmtCOP(totalBruto)}`,ML+CW/2,y+6,{align:'center'});
+
+  // Pie
+  doc.setFontSize(6);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
+  doc.text(`STC Express · ${quinNombre} · Generado ${fecha}`,ML,292);
+
+  const arch=quinNombre.replace(/[^a-zA-Z0-9]/g,'_');
+  doc.save(`Nomina_${arch}.pdf`);
+  toast('PDF de contabilidad generado ✓','ok');
 }
 
 // ── Liquidar ── (subir reporte xcargo y generar recibo)
@@ -2355,6 +2587,24 @@ async function liqHandleFile(file){
 
     S._liqData={archivo:file.name,df,mensajeros,mensajerosMap};
 
+    // Guardar/actualizar la quincena en BD automáticamente
+    // Detectar mes y año del archivo (usar la fecha más frecuente)
+    if(df.length){
+      const meses={};
+      df.forEach(r=>{if(r.fecha) meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]=(meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]||0)+1;});
+      const topMes=Object.entries(meses).sort((a,b)=>b[1]-a[1])[0]?.[0];
+      if(topMes){
+        const[año,mes]=topMes.split('-').map(Number);
+        S._liqAñoDetectado=año;
+        S._liqMesDetectado=mes;
+        // Pre-seleccionar mes y año en el formulario
+        const selMes=document.getElementById('liqMes');
+        const inpAño=document.getElementById('liqAño');
+        if(selMes) selMes.value=mes;
+        if(inpAño) inpAño.value=año;
+      }
+    }
+
     document.getElementById('liqFileLabel').textContent=
       '✓ '+file.name+' ('+df.length.toLocaleString()+' entregas · '+mensajeros.length+' operadores)';
     document.getElementById('liqStep2').style.display='block';
@@ -2501,7 +2751,49 @@ async function confirmarLiquidacion(){
         closeDlg();
         setP(`<div class="ld"><div class="sp"></div><p style="color:var(--tx2)">Guardando y generando PDF...</p></div>`);
         try{
-          // 1. Guardar liquidación en BD
+          // 1. Crear/obtener quincena
+          const quinNombre=`${MESES_ES[p.mes]} ${p.año} · ${p.quincena}`;
+          const{data:quin}=await sb.from('quincenas').upsert({
+            mes:p.mes, año:p.año, quincena:p.quincena,
+            nombre:quinNombre,
+            archivo_nombre:S._liqData?.archivo||null,
+          },{onConflict:'mes,año,quincena'}).select().single();
+
+          // 2. Crear/actualizar entrada del mensajero en quincena_mensajeros
+          let qmEntry=null;
+          if(quin?.id&&p.mensDBId){
+            const{data:qm}=await sb.from('quincena_mensajeros').upsert({
+              quincena_id:quin.id,
+              mensajero_id:p.mensDBId,
+              nombre_display:p.mensajero,
+              correo_xcargo:Object.values(S._liqData?.mensajerosMap||{}).find(m=>m.nombre===p.mensajero)?.correo||null,
+              total_entregas:p.resumen.reduce((s,r)=>s+r.paquetes,0),
+              total_bruto:p.totalBruto,
+              en_bd:true,
+            },{onConflict:'quincena_id,mensajero_id'}).select().single();
+            qmEntry=qm;
+
+            // Guardar detalle día a día
+            if(qm?.id){
+              await sb.from('quincena_detalle').delete().eq('quincena_mensajero_id',qm.id);
+              const detalles=p.resumen.filter(r=>r.paquetes>0).map(r=>({
+                quincena_mensajero_id:qm.id,
+                dia:r.dia,
+                fecha:new Date(p.año,p.mes-1,r.dia).toISOString().slice(0,10),
+                entregas:r.paquetes,
+                valor:r.valor,
+              }));
+              if(detalles.length) await sb.from('quincena_detalle').insert(detalles);
+            }
+
+            // Actualizar totales de la quincena
+            const{count:totalMens}=await sb.from('quincena_mensajeros').select('id',{count:'exact',head:true}).eq('quincena_id',quin.id);
+            const{data:totales}=await sb.from('quincena_mensajeros').select('total_entregas').eq('quincena_id',quin.id);
+            const totalEntr=totales?.reduce((s,m)=>s+Number(m.total_entregas||0),0)||0;
+            await sb.from('quincenas').update({total_mensajeros:totalMens||0,total_entregas:totalEntr}).eq('id',quin.id);
+          }
+
+          // 3. Insertar liquidación formal
           const{data:liq,error:lErr}=await sb.from('liquidaciones').insert({
             mensajero_id:p.mensDBId,
             mes:p.mes, año:p.año, quincena:p.quincena,
