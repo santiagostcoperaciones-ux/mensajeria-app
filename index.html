@@ -2587,21 +2587,124 @@ async function liqHandleFile(file){
 
     S._liqData={archivo:file.name,df,mensajeros,mensajerosMap};
 
-    // Guardar/actualizar la quincena en BD automáticamente
-    // Detectar mes y año del archivo (usar la fecha más frecuente)
-    if(df.length){
-      const meses={};
-      df.forEach(r=>{if(r.fecha) meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]=(meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]||0)+1;});
-      const topMes=Object.entries(meses).sort((a,b)=>b[1]-a[1])[0]?.[0];
-      if(topMes){
-        const[año,mes]=topMes.split('-').map(Number);
-        S._liqAñoDetectado=año;
-        S._liqMesDetectado=mes;
-        // Pre-seleccionar mes y año en el formulario
-        const selMes=document.getElementById('liqMes');
-        const inpAño=document.getElementById('liqAño');
-        if(selMes) selMes.value=mes;
-        if(inpAño) inpAño.value=año;
+    // Detectar mes/año del archivo
+    const meses={};
+    df.forEach(r=>{if(r.fecha) meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]=(meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]||0)+1;});
+    const topMes=Object.entries(meses).sort((a,b)=>b[1]-a[1])[0]?.[0];
+    if(topMes){
+      const[año,mes]=topMes.split('-').map(Number);
+      S._liqAñoDetectado=año;
+      S._liqMesDetectado=mes;
+      const selMes=document.getElementById('liqMes');
+      const inpAño=document.getElementById('liqAño');
+      if(selMes) selMes.value=mes;
+      if(inpAño) inpAño.value=año;
+
+      // ── Guardar quincena automáticamente en BD para Q1 y Q2 ──
+      // Detectar quincena según distribución de fechas del archivo
+      const diasQ1=df.filter(r=>r.fecha&&r.fecha.getDate()<=15).length;
+      const diasQ2=df.filter(r=>r.fecha&&r.fecha.getDate()>15).length;
+      const quincenaDetectada=diasQ2>diasQ1?'Q2':'Q1';
+      S._liqQuincenaDetectada=quincenaDetectada;
+
+      // Pre-seleccionar quincena
+      const selQ=document.getElementById('liqQuincena');
+      if(selQ) selQ.value=quincenaDetectada;
+
+      // Guardar/actualizar quincena
+      const quinNombre=`${MESES_ES[mes]} ${año} · ${quincenaDetectada}`;
+      document.getElementById('liqFileLabel').textContent='⏳ Guardando quincena...';
+
+      try{
+        const{data:quin,error:quinErr}=await sb.from('quincenas').upsert({
+          mes,año,quincena:quincenaDetectada,
+          nombre:quinNombre,
+          archivo_nombre:file.name,
+        },{onConflict:'mes,año,quincena'}).select().single();
+
+        if(quin?.id){
+          S._liqQuinId=quin.id;
+          // Guardar todos los mensajeros con sus totales
+          let guardados=0;
+          for(const [key,m] of Object.entries(mensajerosMap)){
+            // Calcular totales del mensajero para la quincena detectada
+            const rango=rangoQuincena(mes,año,quincenaDetectada);
+            const subDf=df.filter(r=>{
+              if(r.mensajeroId!==m.id&&r.nombreReal!==m.nombre) return false;
+              const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
+              return fd>=rango.desde&&fd<=rango.hasta;
+            });
+            if(!subDf.length) continue;
+
+            // Resumen día a día
+            const diasSet={};
+            subDf.forEach(r=>{
+              const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
+              const d=fd.getDate();
+              if(!diasSet[d])diasSet[d]={dia:d,entregas:0,valor:0,fecha:fd};
+              diasSet[d].entregas++;
+              diasSet[d].valor+=r.valor;
+            });
+            const totalEnt=Object.values(diasSet).reduce((s,d)=>s+d.entregas,0);
+            const totalBruto=Object.values(diasSet).reduce((s,d)=>s+d.valor,0);
+
+            // Upsert mensajero en quincena
+            const payload={
+              quincena_id:quin.id,
+              nombre_display:m.nombre,
+              correo_xcargo:m.correo||null,
+              total_entregas:totalEnt,
+              total_bruto:totalBruto,
+              en_bd:!!m.id,
+            };
+            if(m.id) payload.mensajero_id=m.id;
+
+            let qmId=null;
+            if(m.id){
+              const{data:qm}=await sb.from('quincena_mensajeros')
+                .upsert({...payload},{onConflict:'quincena_id,mensajero_id'})
+                .select('id').single();
+              qmId=qm?.id;
+            } else {
+              // Sin BD: buscar por nombre_display
+              const{data:existe}=await sb.from('quincena_mensajeros')
+                .select('id').eq('quincena_id',quin.id).eq('nombre_display',m.nombre).maybeSingle();
+              if(existe){
+                await sb.from('quincena_mensajeros').update(payload).eq('id',existe.id);
+                qmId=existe.id;
+              } else {
+                const{data:nuevo}=await sb.from('quincena_mensajeros').insert(payload).select('id').single();
+                qmId=nuevo?.id;
+              }
+            }
+
+            // Guardar detalle día a día
+            if(qmId){
+              await sb.from('quincena_detalle').delete().eq('quincena_mensajero_id',qmId);
+              const detalles=Object.values(diasSet).map(d=>({
+                quincena_mensajero_id:qmId,
+                dia:d.dia,
+                fecha:d.fecha.toISOString().slice(0,10),
+                entregas:d.entregas,
+                valor:d.valor,
+              }));
+              if(detalles.length) await sb.from('quincena_detalle').insert(detalles);
+            }
+            guardados++;
+          }
+
+          // Actualizar totales de la quincena
+          const totalEntregas=df.filter(r=>{const rango=rangoQuincena(mes,año,quincenaDetectada);const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);return fd>=rango.desde&&fd<=rango.hasta;}).length;
+          await sb.from('quincenas').update({
+            total_mensajeros:guardados,
+            total_entregas:totalEntregas,
+          }).eq('id',quin.id);
+
+          toast(`Quincena ${quinNombre} guardada · ${guardados} mensajeros`,'ok');
+        }
+      }catch(errQ){
+        console.error('Error guardando quincena:',errQ);
+        // No bloquear el flujo si falla el guardado
       }
     }
 
