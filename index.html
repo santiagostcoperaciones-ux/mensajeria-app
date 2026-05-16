@@ -2482,10 +2482,9 @@ async function liqHandleFile(file){
     const baseData=XLSX.utils.sheet_to_json(baseSheet);
     if(!baseData.length)throw new Error('El archivo está vacío');
 
-    // Cargar mensajeros — dos mapas: correo propio y correo xcargo prestado
+    // Cargar mensajeros — incluir retirados para hacer match de usuarios prestados históricos
     const{data:mensDB}=await sb.from('mensajeros')
-      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario,fecha_ingreso')
-      .eq('activo',true);
+      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario,fecha_ingreso,activo,fecha_retiro');
 
     const mensMapCorreo={};    // correo propio → mensajero
     const mensMapPrestado={};  // usuario_xcargo_prestado → [{mensajero, fechaIngreso}] (puede haber varios)
@@ -2624,6 +2623,13 @@ async function liqHandleFile(file){
 
         if(quin?.id){
           S._liqQuinId=quin.id;
+          // Limpiar datos anteriores de esta quincena para evitar duplicados
+          const{data:qmExistentes}=await sb.from('quincena_mensajeros').select('id').eq('quincena_id',quin.id);
+          if(qmExistentes?.length){
+            const ids=qmExistentes.map(q=>q.id);
+            await sb.from('quincena_detalle').delete().in('quincena_mensajero_id',ids);
+            await sb.from('quincena_mensajeros').delete().eq('quincena_id',quin.id);
+          }
           // Guardar todos los mensajeros con sus totales (sin filtro de quincena)
           let guardados=0;
           for(const [key,m] of Object.entries(mensajerosMap)){
@@ -2658,16 +2664,22 @@ async function liqHandleFile(file){
 
             let qmId=null;
             if(m.id){
+              // Con mensajero_id: usar upsert por (quincena_id, mensajero_id)
               const{data:qm}=await sb.from('quincena_mensajeros')
                 .upsert({...payload},{onConflict:'quincena_id,mensajero_id'})
                 .select('id').single();
               qmId=qm?.id;
             } else {
-              // Sin BD: buscar por nombre_display
+              // Sin mensajero_id: buscar por nombre_display para actualizar en vez de duplicar
               const{data:existe}=await sb.from('quincena_mensajeros')
                 .select('id').eq('quincena_id',quin.id).eq('nombre_display',m.nombre).maybeSingle();
               if(existe){
-                await sb.from('quincena_mensajeros').update(payload).eq('id',existe.id);
+                await sb.from('quincena_mensajeros').update({
+                  correo_xcargo:payload.correo_xcargo,
+                  total_entregas:payload.total_entregas,
+                  total_bruto:payload.total_bruto,
+                  en_bd:false,
+                }).eq('id',existe.id);
                 qmId=existe.id;
               } else {
                 const{data:nuevo}=await sb.from('quincena_mensajeros').insert(payload).select('id').single();
