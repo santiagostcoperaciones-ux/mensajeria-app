@@ -698,25 +698,31 @@ function descargarGuiasMensajero(mId){
 
   // ── Encabezado ──
   doc.setFillColor(...DARK);
-  doc.rect(0,0,PW,28,'F');
-  doc.setFontSize(16);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text('STC Express',ML,y+8);
-  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
-  doc.text('Lista de guías asignadas',ML,y+15);
+  doc.rect(0,0,PW,32,'F');
 
-  // Fecha y mensajero en esquina derecha
+  // Logo/nombre empresa
+  doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('STC Express',ML,y+11);
+
+  // Subtítulo debajo del nombre
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
+  doc.text('Lista de guías asignadas',ML,y+19);
+
+  // Fecha arriba a la derecha
   const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
   doc.setFontSize(8);doc.setTextColor(148,163,184);
-  doc.text(fecha,PW-MR,y+8,{align:'right'});
+  doc.text(fecha,PW-MR,y+11,{align:'right'});
 
-  // Badge nombre mensajero
+  // Badge nombre mensajero debajo de la fecha — sin cortar
   doc.setFillColor(...BLUE);
-  doc.roundedRect(PW-MR-60,y+10,60,10,2,2,'F');
-  doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  const nombreCorto=m.nombre.length>28?m.nombre.slice(0,27)+'…':m.nombre;
-  doc.text(nombreCorto,PW-MR-30,y+16.5,{align:'center'});
+  const badgeW=Math.min(CW*0.5, 90);
+  doc.roundedRect(PW-MR-badgeW,y+14,badgeW,11,2,2,'F');
+  doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  // Truncar solo si es muy largo
+  const nombreBadge=m.nombre.length>35?m.nombre.slice(0,34)+'…':m.nombre;
+  doc.text(nombreBadge,PW-MR-badgeW/2,y+21,{align:'center'});
 
-  y=34;
+  y=38;
 
   // ── Resumen ──
   doc.setFillColor(...LIGHT);
@@ -1536,7 +1542,7 @@ async function confirmarAsignacion(){
             paqId=existe.id;
           } else {
             const{data:np,error:insErr}=await sb.from('paquetes').insert(paqData).select('id').single();
-            if(insErr) throw insErr;
+            if(insErr){console.error('Sobrante insert error:',insErr);throw insErr;}
             paqId=np?.id;
           }
           if(paqId) await sb.from('historial_paquetes').insert({
@@ -1570,7 +1576,7 @@ async function confirmarAsignacion(){
           });
         }
         ok++;
-      }catch(e){errs++;}
+      }catch(e){errs++;console.error('Error asignando item:',item,e);}
     }
 
     const b=document.getElementById('confirmBar'),m=document.getElementById('confirmMsg'),s=document.getElementById('confirmSub');
