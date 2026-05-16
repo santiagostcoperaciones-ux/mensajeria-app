@@ -655,9 +655,13 @@ function mostrarDetalleMensHome(mId){
   const m=window._homePorMens?.[mId];
   if(!m)return;
   const paquetes=m.paquetes||[];
-  let h=`<div class="sec-title" style="margin-bottom:8px">${esc(m.nombre)} · ${m.count} paquete${m.count!==1?'s':''}</div>`;
+  let h=`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+      <div class="sec-title" style="margin:0">${esc(m.nombre)} · ${m.count} paquete${m.count!==1?'s':''}</div>
+      ${paquetes.length?`<button class="btn btn-p btn-s" onclick="descargarGuiasMensajero('${esc(mId)}')">⬇ PDF guías</button>`:''}
+    </div>`;
   if(!paquetes.length){
-    h+=`<p class="empty">Sin detalle de paquetes</p>`;
+    h+=`<p class="empty">Sin paquetes en curso</p>`;
   } else {
     paquetes.forEach(p=>{
       const estadoColor={asignado:'var(--acc)',en_ruta:'var(--amb)',entregado:'var(--grn)',devuelto:'var(--red)'}[p.estado]||'var(--tx3)';
@@ -678,6 +682,119 @@ function mostrarDetalleMensHome(mId){
   }
   h+=`<button class="btn btn-o btn-w btn-s" style="margin-top:8px" onclick="pgHome()">← Volver</button>`;
   setP(h);
+}
+
+function descargarGuiasMensajero(mId){
+  const m=window._homePorMens?.[mId];
+  if(!m||!m.paquetes?.length){toast('Sin paquetes para exportar','wa');return;}
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  const PW=210,ML=14,MR=14,CW=PW-ML-MR;
+  let y=14;
+
+  // ── Colores ──
+  const DARK=[15,23,42],GRAY=[100,116,139],LIGHT=[241,245,249],BLUE=[59,130,246],WHITE=[255,255,255],GREEN=[16,185,129];
+
+  // ── Encabezado ──
+  doc.setFillColor(...DARK);
+  doc.rect(0,0,PW,28,'F');
+  doc.setFontSize(16);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('STC Express',ML,y+8);
+  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
+  doc.text('Lista de guías asignadas',ML,y+15);
+
+  // Fecha y mensajero en esquina derecha
+  const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+  doc.setFontSize(8);doc.setTextColor(148,163,184);
+  doc.text(fecha,PW-MR,y+8,{align:'right'});
+
+  // Badge nombre mensajero
+  doc.setFillColor(...BLUE);
+  doc.roundedRect(PW-MR-60,y+10,60,10,2,2,'F');
+  doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  const nombreCorto=m.nombre.length>28?m.nombre.slice(0,27)+'…':m.nombre;
+  doc.text(nombreCorto,PW-MR-30,y+16.5,{align:'center'});
+
+  y=34;
+
+  // ── Resumen ──
+  doc.setFillColor(...LIGHT);
+  doc.roundedRect(ML,y,CW,12,2,2,'F');
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...DARK);
+  doc.text(`Total de paquetes: ${m.paquetes.length}`,ML+4,y+8);
+  doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
+  doc.text(`Generado: ${fecha}`,PW-MR-4,y+8,{align:'right'});
+  y+=18;
+
+  // ── Cabecera tabla ──
+  doc.setFillColor(...DARK);
+  doc.rect(ML,y,CW,7,'F');
+  doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('#',ML+2,y+4.8);
+  doc.text('Guía',ML+10,y+4.8);
+  doc.text('Destinatario',ML+70,y+4.8);
+  doc.text('Zona',PW-MR-2,y+4.8,{align:'right'});
+  y+=7;
+
+  // ── Filas ──
+  const paqOrdenados=[...m.paquetes].sort((a,b)=>(a.zona||'').localeCompare(b.zona||''));
+  paqOrdenados.forEach((p,i)=>{
+    // Nueva página si hace falta
+    if(y>270){
+      doc.addPage();
+      y=14;
+      // Repite cabecera tabla
+      doc.setFillColor(...DARK);
+      doc.rect(ML,y,CW,7,'F');
+      doc.setFontSize(7);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+      doc.text('#',ML+2,y+4.8);
+      doc.text('Guía',ML+10,y+4.8);
+      doc.text('Destinatario',ML+70,y+4.8);
+      doc.text('Zona',PW-MR-2,y+4.8,{align:'right'});
+      y+=7;
+    }
+
+    const bg=i%2===0?WHITE:[248,250,252];
+    doc.setFillColor(...bg);
+    doc.rect(ML,y,CW,7,'F');
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.2);
+    doc.line(ML,y+7,PW-MR,y+7);
+
+    doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
+    doc.text(String(i+1),ML+2,y+4.8);
+
+    doc.setTextColor(...BLUE);doc.setFont('helvetica','bold');
+    doc.text(String(p.guia||'—').slice(0,25),ML+10,y+4.8);
+
+    doc.setTextColor(...DARK);doc.setFont('helvetica','normal');
+    const dest=String(p.destinatario||'—');
+    doc.text(dest.length>32?dest.slice(0,31)+'…':dest,ML+70,y+4.8);
+
+    doc.setTextColor(...GRAY);
+    doc.text(String(p.zona||'—').slice(0,12),PW-MR-2,y+4.8,{align:'right'});
+    y+=7;
+  });
+
+  // ── Total final ──
+  y+=2;
+  doc.setFillColor(...GREEN);
+  doc.roundedRect(ML,y,CW,8,2,2,'F');
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(`Total: ${m.paquetes.length} paquetes asignados`,ML+CW/2,y+5.5,{align:'center'});
+
+  // ── Pie ──
+  const yFoot=295;
+  doc.setDrawColor(...LIGHT);doc.setLineWidth(0.3);doc.line(ML,yFoot-4,PW-MR,yFoot-4);
+  doc.setFontSize(6);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
+  doc.text('STC Express Mensajería · Suba, Bogotá',ML,yFoot);
+  doc.text(`${m.nombre} · ${fecha}`,PW-MR,yFoot,{align:'right'});
+
+  // ── Descargar ──
+  const nombreLimpio=m.nombre.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'');
+  const hoy=new Date();
+  const fechaArchivo=`${hoy.getFullYear()}${String(hoy.getMonth()+1).padStart(2,'0')}${String(hoy.getDate()).padStart(2,'0')}`;
+  doc.save(`Guias_${nombreLimpio}_${fechaArchivo}.pdf`);
+  toast('PDF generado ✓','ok');
 }
 
 function pickFechaHome(){
