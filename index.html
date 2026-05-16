@@ -2252,16 +2252,20 @@ async function liqHandleFile(file){
 
     // Cargar mensajeros — dos mapas: correo propio y correo xcargo prestado
     const{data:mensDB}=await sb.from('mensajeros')
-      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario')
+      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario,fecha_ingreso')
       .eq('activo',true);
 
-    const mensMapCorreo={};    // correo propio → mensajero (usuario_propio=true)
-    const mensMapPrestado={};  // usuario_xcargo_prestado → mensajero (usuario_propio=false)
-    const mensMapAnterior={};  // usuario_xcargo_anterior → {mensajero, fechaCorte} (cambió de usuario)
+    const mensMapCorreo={};    // correo propio → mensajero
+    const mensMapPrestado={};  // usuario_xcargo_prestado → [{mensajero, fechaIngreso}] (puede haber varios)
+    const mensMapAnterior={};  // usuario_xcargo_anterior → {mensajero, fechaCorte}
     const mensMapCedula={};    // num_documento → mensajero (fallback)
     (mensDB||[]).forEach(m=>{
       if(m.correo) mensMapCorreo[m.correo.trim().toLowerCase()]=m;
-      if(m.usuario_xcargo_prestado) mensMapPrestado[m.usuario_xcargo_prestado.trim().toLowerCase()]=m;
+      if(m.usuario_xcargo_prestado){
+        const key=m.usuario_xcargo_prestado.trim().toLowerCase();
+        if(!mensMapPrestado[key]) mensMapPrestado[key]=[];
+        mensMapPrestado[key].push({m, fechaIngreso: m.fecha_ingreso ? new Date(m.fecha_ingreso) : null});
+      }
       if(m.usuario_xcargo_anterior) mensMapAnterior[m.usuario_xcargo_anterior.trim().toLowerCase()]={m, fechaCorte: m.fecha_cambio_usuario ? new Date(m.fecha_cambio_usuario) : null};
       if(m.num_documento) mensMapCedula[String(m.num_documento).trim()]=m;
     });
@@ -2281,8 +2285,29 @@ async function liqHandleFile(file){
         const correoOp=String(r['Correo operador']||'').trim().toLowerCase();
         let mensajeroDB=correoOp?mensMapCorreo[correoOp]:null;
 
-        // Match 2: por usuario xcargo prestado actual
-        if(!mensajeroDB&&correoOp) mensajeroDB=mensMapPrestado[correoOp]||null;
+        // Match 2: por usuario xcargo prestado — verificar fecha_ingreso
+        // Si varios mensajeros usaron el mismo correo prestado, tomar el que estaba activo en esa fecha
+        if(!mensajeroDB&&correoOp&&mensMapPrestado[correoOp]){
+          const candidatos=mensMapPrestado[correoOp];
+          let fechaEntrega=r['Fecha y hora de salida'];
+          if(typeof fechaEntrega==='number'){const d=XLSX.SSF.parse_date_code(fechaEntrega);fechaEntrega=new Date(d.y,d.m-1,d.d);}
+          else if(!(fechaEntrega instanceof Date)) fechaEntrega=new Date(String(fechaEntrega));
+          // Buscar el candidato cuya fecha_ingreso es <= fecha de entrega
+          // Si solo hay uno sin fecha_ingreso, usarlo como fallback
+          let mejorMatch=null;
+          for(const c of candidatos){
+            if(!c.fechaIngreso){
+              if(!mejorMatch) mejorMatch=c.m; // fallback sin fecha
+            } else if(fechaEntrega>=c.fechaIngreso){
+              // Este mensajero ya estaba activo en esa fecha
+              // Si hay varios, tomar el que tenga fecha_ingreso más reciente (el más nuevo)
+              if(!mejorMatch||!mejorMatch.fecha_ingreso||(c.fechaIngreso>new Date(mejorMatch.fecha_ingreso))){
+                mejorMatch=c.m;
+              }
+            }
+          }
+          mensajeroDB=mejorMatch||null;
+        }
 
         // Match 3: por usuario anterior — solo si la entrega es ANTES de la fecha de cambio
         if(!mensajeroDB&&correoOp&&mensMapAnterior[correoOp]){
