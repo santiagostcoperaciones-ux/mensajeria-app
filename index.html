@@ -2245,24 +2245,57 @@ async function pgQuinMensajeroRecibo(){
   setBar(nombre,S._quinNombre||'Quincena');
   setP(loader());
 
-  const[{data:qm},{data:detalle},{data:liq}]=await Promise.all([
+  const[{data:qm},{data:detalle},{data:descuentos}]=await Promise.all([
     sb.from('quincena_mensajeros').select('*').eq('id',qmId).single(),
     sb.from('quincena_detalle').select('dia,fecha,entregas,valor').eq('quincena_mensajero_id',qmId).order('dia'),
-    // Buscar liquidación formal si existe
-    sb.from('liquidaciones').select('id,total_bruto,total_descuentos,total_neto,quincena,mes,año').eq('quincena_mensajero_id',qmId).maybeSingle(),
+    // Descuentos pendientes del mensajero para esta quincena
+    sb.from('quincena_mensajeros').select('quincena_id,mensajero_id').eq('id',qmId).single()
+      .then(async({data:ref})=>{
+        if(!ref?.mensajero_id||!ref?.quincena_id) return {data:[]};
+        const{data:qInfo}=await sb.from('quincenas').select('mes,año,quincena').eq('id',ref.quincena_id).single();
+        if(!qInfo) return {data:[]};
+        return sb.from('descuentos')
+          .select('id,concepto,valor,numero_guia,tipo')
+          .eq('mensajero_id',ref.mensajero_id)
+          .eq('mes_quincena',qInfo.mes).eq('año_quincena',qInfo.año).eq('quincena',qInfo.quincena)
+          .eq('aplicado',false);
+      }),
   ]);
 
   const mens=qm||{};
+  const descs=descuentos?.data||descuentos||[];
+  const totalDescuentos=(descs||[]).reduce((s,d)=>s+Number(d.valor||0),0);
+  const totalNeto=Number(mens.total_bruto||0)-totalDescuentos;
+
   let h=`
     <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:14px;margin-bottom:12px">
       <div style="font-weight:700;font-size:clamp(15px,4vw,17px);margin-bottom:6px">${esc(mens.nombre_display||nombre)}</div>
       ${mens.correo_xcargo?`<div style="font-size:var(--fss);color:var(--tx3);margin-bottom:8px">${esc(mens.correo_xcargo)}</div>`:''}
-      <div class="stat-row" style="margin-bottom:0">
+      <div class="stat-row" style="margin-bottom:${descs.length?'10px':'0'}">
         <div class="stat"><div class="stat-n" style="color:var(--acc)">${mens.total_entregas||0}</div><div class="stat-l">Entregas</div></div>
-        <div class="stat"><div class="stat-n" style="color:var(--grn);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(mens.total_bruto)}</div><div class="stat-l">Total bruto</div></div>
+        <div class="stat"><div class="stat-n" style="color:var(--acc);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(mens.total_bruto)}</div><div class="stat-l">Bruto</div></div>
+        ${descs.length?`<div class="stat"><div class="stat-n" style="color:var(--red);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(totalDescuentos)}</div><div class="stat-l">Descuentos</div></div>`:''}
       </div>
+      ${descs.length?`<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:var(--r2);padding:8px 12px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-weight:600">Total neto</span>
+        <span style="font-weight:700;font-family:var(--mo);color:var(--grn);font-size:clamp(16px,4vw,20px)">${fmtCOP(totalNeto)}</span>
+      </div>`:''}
     </div>
   `;
+
+  // Descuentos pendientes
+  if(descs.length){
+    h+=`<div class="sec-title" style="color:var(--red)">Descuentos pendientes (${descs.length})</div>`;
+    descs.forEach(d=>{
+      h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:var(--r2);padding:8px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;font-size:var(--fss)">
+        <div>
+          <div style="font-weight:500">${esc(d.concepto)}</div>
+          ${d.numero_guia?`<div style="color:var(--tx3)">Guía: ${esc(d.numero_guia)}</div>`:''}
+        </div>
+        <span style="color:var(--red);font-family:var(--mo);font-weight:600">${fmtCOP(d.valor)}</span>
+      </div>`;
+    });
+  }
 
   if(detalle?.length){
     h+=`<div class="sec-title">Detalle día a día</div>
@@ -2291,20 +2324,18 @@ async function pgQuinMensajeroRecibo(){
     <button class="btn btn-o btn-s" style="flex:1" onclick="go('quincena-detalle')">← Volver</button>
   </div>`;
   setP(h);
-  S._qmData={qm,detalle:detalle||[]};
+  S._qmData={qm,detalle:detalle||[],descs:descs||[],totalDescuentos,totalNeto};
 }
 
 async function descargarReciboDesdequincena(qmId){
   const r=S._qmData;
   if(!r){toast('Sin datos','er');return;}
-  const{qm,detalle}=r;
-  // Obtener datos del mensajero de BD si existe
+  const{qm,detalle,descs,totalDescuentos,totalNeto}=r;
   let mens={nombre_completo:qm.nombre_display};
   if(qm.mensajero_id){
-    const{data:m}=await sb.from('mensajeros').select('nombre_completo,num_documento,telefono,placa').eq('id',qm.mensajero_id).single();
+    const{data:m}=await sb.from('mensajeros').select('nombre_completo,num_documento,telefono,placa,banco,num_cuenta,tipo_cuenta').eq('id',qm.mensajero_id).single();
     if(m) mens=m;
   }
-  // Construir quincena_id para obtener mes/año/quincena
   const{data:quinData}=await sb.from('quincenas').select('mes,año,quincena').eq('id',qm.quincena_id).single();
   const p={
     mensajero:mens.nombre_completo||qm.nombre_display,
@@ -2313,9 +2344,9 @@ async function descargarReciboDesdequincena(qmId){
     quincena:quinData?.quincena==='Q1'?'Primera quincena':'Segunda quincena',
     resumen:detalle.map(d=>({dia:d.dia,paquetes:d.entregas,valor:d.valor})),
     totalBruto:Number(qm.total_bruto),
-    totalDescuentos:0,
-    totalNeto:Number(qm.total_bruto),
-    descuentosPend:[],
+    totalDescuentos:totalDescuentos||0,
+    totalNeto:totalNeto||Number(qm.total_bruto),
+    descuentosPend:descs||[],
   };
   generarReciboPDF(p,mens,qmId);
   toast('PDF generado ✓','ok');
