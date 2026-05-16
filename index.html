@@ -4014,12 +4014,28 @@ async function toggleUsuarioActivo(id, nombre, activo){
 async function retirarMensajero(id, nombre, correoPrestadoALiberar){
   const hoy=new Date().toISOString().slice(0,10);
 
-  // 1. Marcar mensajero como inactivo y guardar fecha de retiro
-  await sb.from('mensajeros').update({
+  // Obtener datos actuales para preservar el historial
+  const{data:m}=await sb.from('mensajeros').select('usuario_xcargo_prestado,usuario_xcargo').eq('id',id).single();
+
+  // Al retirar: mover usuario_xcargo_prestado a usuario_xcargo_anterior
+  // para que el sistema siga reconociendo sus entregas históricas
+  const updateData={
     activo: false,
     fecha_retiro: hoy,
-    usuario_xcargo_prestado: null,  // liberar usuario prestado
-  }).eq('id',id);
+    usuario_xcargo_prestado: null,
+  };
+
+  // Si tenía usuario prestado, guardarlo como anterior con fecha de corte = hoy
+  if(m?.usuario_xcargo_prestado){
+    updateData.usuario_xcargo_anterior=m.usuario_xcargo_prestado;
+    updateData.fecha_cambio_usuario=hoy;
+  } else if(m?.usuario_xcargo){
+    // Si tenía usuario propio, también guardarlo como anterior
+    updateData.usuario_xcargo_anterior=m.usuario_xcargo;
+    updateData.fecha_cambio_usuario=hoy;
+  }
+
+  await sb.from('mensajeros').update(updateData).eq('id',id);
 
   // 2. Si tenía usuario prestado → marcarlo como disponible en el pool
   if(correoPrestadoALiberar){
