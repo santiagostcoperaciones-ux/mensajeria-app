@@ -3115,7 +3115,10 @@ function generarReciboPDF(p, mens, liqId){
   const rangoStr=rango.desde.toLocaleDateString('es-CO',opts)+' – '+rango.hasta.toLocaleDateString('es-CO',opts);
   doc.text(`Período: ${rangoStr}`, ML+4, y+22);
 
-  // Badge quincena — más ancho para que quepa "Primera quincena"
+  // Definir esQ1 aquí para usarlo en el badge y más adelante en el texto legal
+  const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
+
+  // Badge quincena
   const quinLabel=`${MESES_ES[p.mes]} ${p.año} · ${esQ1?'Q1':'Q2'}`;
   doc.setFillColor(...BLUE);
   doc.roundedRect(PW-MR-45,y+4,45,13,2,2,'F');
@@ -3261,7 +3264,6 @@ function generarReciboPDF(p, mens, liqId){
   if(y>PH-55){doc.addPage();y=MT;}
 
   // Determinar quincena en texto
-  const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
   const quinTexto=esQ1?'PRIMERA QUINCENA':'SEGUNDA QUINCENA';
   const mesTexto=(MESES_ES[p.mes]||'').toUpperCase();
   const valorLetras=numALetras(p.totalNeto);
