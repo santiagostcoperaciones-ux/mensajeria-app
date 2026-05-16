@@ -3513,10 +3513,17 @@ async function pgUsuarios(){
     </div>`;
   setP(loader());
 
-  const [{data:mensajeros},{data:prestamos}]=await Promise.all([
+  const [{data:mensajeros},{data:prestamos},{data:enUsoRaw}]=await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,fecha_retiro,created_at').order('activo',{ascending:false}).order('nombre_completo'),
     sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo,clave_enc').order('nombre'),
+    sb.from('mensajeros').select('nombre_completo,usuario_xcargo_prestado').eq('activo',true).not('usuario_xcargo_prestado','is',null),
   ]);
+
+  // Mapa de correo prestado → nombre del mensajero que lo usa
+  const enUsoMap={};
+  (enUsoRaw||[]).forEach(m=>{
+    if(m.usuario_xcargo_prestado) enUsoMap[m.usuario_xcargo_prestado.toLowerCase()]=m.nombre_completo;
+  });
 
   const activos=(mensajeros||[]).filter(m=>m.activo);
   const retirados=(mensajeros||[]).filter(m=>!m.activo);
@@ -3567,15 +3574,18 @@ async function pgUsuarios(){
     h+=`<p class="empty">Sin usuarios de préstamo registrados</p>`;
   } else {
     (prestamos||[]).forEach(p=>{
+      const asignadoA=enUsoMap[p.usuario_xcargo?.toLowerCase()];
+      const enUso=!!asignadoA;
       h+=`<div class="card" style="cursor:default">
         <div class="card-row">
           <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc)">🔑</div>
           <div style="flex:1;min-width:0">
             <div class="ct">${esc(p.nombre)}</div>
             <div class="cs">${esc(p.usuario_xcargo||'—')}${p.placa?' · 🏍 '+esc(p.placa):''}</div>
+            ${enUso?`<div style="font-size:var(--fss);color:var(--amb);margin-top:2px">→ ${esc(asignadoA)}</div>`:''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
-            <span class="b ${p.activo?'b-gr':'b-am'}">${p.activo?'Disponible':'En uso'}</span>
+            <span class="b ${enUso?'b-am':'b-gr'}">${enUso?'En uso':'Disponible'}</span>
             <button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">${p.clave_enc?'Ver clave':'🔑 Sin clave'}</button>
           </div>
         </div>
