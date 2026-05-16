@@ -2624,16 +2624,13 @@ async function liqHandleFile(file){
 
         if(quin?.id){
           S._liqQuinId=quin.id;
-          // Guardar todos los mensajeros con sus totales
+          // Guardar todos los mensajeros con sus totales (sin filtro de quincena)
           let guardados=0;
           for(const [key,m] of Object.entries(mensajerosMap)){
-            // Calcular totales del mensajero para la quincena detectada
-            const rango=rangoQuincena(mes,año,quincenaDetectada);
-            const subDf=df.filter(r=>{
-              if(r.mensajeroId!==m.id&&r.nombreReal!==m.nombre) return false;
-              const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
-              return fd>=rango.desde&&fd<=rango.hasta;
-            });
+            // Tomar TODAS las entregas del mensajero en el archivo sin filtrar por quincena
+            const subDf=df.filter(r=>
+              (m.id ? r.mensajeroId===m.id : r.nombreReal===m.nombre)
+            );
             if(!subDf.length) continue;
 
             // Resumen día a día
@@ -2694,10 +2691,9 @@ async function liqHandleFile(file){
           }
 
           // Actualizar totales de la quincena
-          const totalEntregas=df.filter(r=>{const rango=rangoQuincena(mes,año,quincenaDetectada);const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);return fd>=rango.desde&&fd<=rango.hasta;}).length;
           await sb.from('quincenas').update({
             total_mensajeros:guardados,
-            total_entregas:totalEntregas,
+            total_entregas:df.length,
           }).eq('id',quin.id);
 
           toast(`Quincena ${quinNombre} guardada · ${guardados} mensajeros`,'ok');
