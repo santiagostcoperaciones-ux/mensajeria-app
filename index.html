@@ -12,6 +12,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
 :root{
   --bg:#0f172a;--bg2:#1e293b;--bg3:#334155;
@@ -1405,12 +1406,18 @@ function iniciarAsignacion(){
 function pgAsignarScan(){
   setBar('Escaneando',S.asigMensNombre);
   setP(`
-    <div class="scan-area" id="scanArea"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
-    <div style="text-align:center;color:var(--tx2);font-size:var(--fss);margin:6px 0" id="sst">Apunta al código</div>
-    <div style="display:flex;gap:8px;margin:8px 0">
+    <div id="camWrap">
+      <div class="scan-area" id="scanArea"><video id="scanVid" autoplay playsinline muted></video><div class="scan-line"></div></div>
+      <div style="text-align:center;color:var(--tx2);font-size:var(--fss);margin:6px 0" id="sst">Apunta al código</div>
+    </div>
+    <div style="display:flex;gap:8px;margin:8px 0;align-items:center">
       <input class="inp" id="miInput" placeholder="O escribe la guía..." style="flex:1"
+        onfocus="ocultarCamara()"
         onkeydown="if(event.key==='Enter'){const v=this.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');this.value='';}}" >
       <button class="btn btn-p btn-s" onclick="const inp=document.getElementById('miInput');const v=inp.value.trim();if(v){const g=cleanGuia(v);if(g)onAsigCode(g);else toast('No válido','er');inp.value='';}">OK</button>
+      <button class="btn btn-o btn-s" id="btnToggleCam" onclick="toggleCamara()" title="Mostrar/ocultar cámara" style="padding:0;width:38px;flex-shrink:0">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;margin:auto"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
     </div>
     <div id="scanResults" style="max-height:160px;overflow-y:auto"></div>
     <div style="display:flex;gap:8px;margin-top:10px">
@@ -1419,6 +1426,31 @@ function pgAsignarScan(){
     </div>
   `);
   initScan(onAsigCode);
+}
+
+function ocultarCamara(){
+  const wrap=document.getElementById('camWrap');
+  if(wrap) wrap.style.display='none';
+  // Pausar stream para ahorrar batería
+  if(S.scanStream) S.scanStream.getTracks().forEach(t=>t.enabled=false);
+  const btn=document.getElementById('btnToggleCam');
+  if(btn) btn.style.opacity='0.5';
+}
+
+function toggleCamara(){
+  const wrap=document.getElementById('camWrap');
+  if(!wrap) return;
+  const visible=wrap.style.display!=='none';
+  if(visible){
+    wrap.style.display='none';
+    if(S.scanStream) S.scanStream.getTracks().forEach(t=>t.enabled=false);
+    document.getElementById('btnToggleCam').style.opacity='0.5';
+  } else {
+    wrap.style.display='block';
+    if(S.scanStream) S.scanStream.getTracks().forEach(t=>t.enabled=true);
+    document.getElementById('btnToggleCam').style.opacity='1';
+    document.getElementById('miInput').blur();
+  }
 }
 async function onAsigCode(guia){
   if(S.asigLista.find(i=>i.guia===guia)){toast('Ya escaneado','wa');return;}
@@ -3890,6 +3922,12 @@ async function pgUsuarioDetalle(){
         <div>${esc(m.direccion)}</div>
       </div>`:''}
 
+      ${m.referencia_nombre||m.referencia_celular?`<div style="margin-top:8px;background:var(--bg);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
+        <div style="color:var(--tx3);margin-bottom:4px">Referencia personal</div>
+        <div style="font-weight:500">${esc(m.referencia_nombre||'—')}</div>
+        ${m.referencia_celular?`<div style="color:var(--tx2)">📞 ${esc(m.referencia_celular)}</div>`:''}
+      </div>`:''}
+
       ${m.banco||m.num_cuenta?`<div style="margin-top:8px;background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
         <div style="color:var(--tx3);margin-bottom:4px">Cuenta bancaria</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
@@ -4030,6 +4068,17 @@ async function pgUsuarioNuevo(){
       <div><label>Fecha de ingreso</label>
         <input class="inp" type="date" id="unFechaIngreso" value="${datos.fecha_ingreso||''}"></div>
 
+      <div class="sec-title" style="margin-top:4px">Referencia personal</div>
+
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div><label>Nombre de la referencia</label>
+          <input class="inp" id="unRefNombre" placeholder="Nombre completo" value="${esc(datos.referencia_nombre||'')}">
+        </div>
+        <div><label>Celular de la referencia</label>
+          <input class="inp" id="unRefCelular" placeholder="3001234567" type="tel" value="${esc(datos.referencia_celular||'')}">
+        </div>
+      </div>
+
       <div class="sec-title" style="margin-top:4px">Cuenta bancaria</div>
 
       <div style="background:rgba(16,185,129,.07);border:1px solid rgba(16,185,129,.15);border-radius:var(--r2);padding:12px 14px;display:flex;flex-direction:column;gap:8px">
@@ -4110,6 +4159,8 @@ async function guardarUsuario(){
   const banco=document.getElementById('unBanco')?.value||null;
   const tipoCuenta=document.getElementById('unTipoCuenta')?.value||null;
   const numCuenta=document.getElementById('unNumCuenta')?.value?.trim()||null;
+  const refNombre=document.getElementById('unRefNombre')?.value?.trim()||null;
+  const refCelular=document.getElementById('unRefCelular')?.value?.trim()||null;
   const usuarioPropio=document.getElementById('unPropio')?.value==='true';
   // Si tiene usuario propio → guardar en usuario_xcargo y limpiar prestado
   // Si usa prestado → guardar en usuario_xcargo_prestado y limpiar propio
@@ -4133,6 +4184,8 @@ async function guardarUsuario(){
     banco:banco,
     num_cuenta:numCuenta,
     tipo_cuenta:tipoCuenta||null,
+    referencia_nombre:refNombre,
+    referencia_celular:refCelular,
   };
 
   try{
@@ -4537,22 +4590,21 @@ function mostrarClaveDialog(nombre, usuario, clave){
   },1000);
 }
 
-// ── Descarga masiva de recibos de una quincena ──
+// ── Descarga masiva de recibos comprimidos en ZIP ──
 async function descargarTodosRecibos(quinId, quinNombre){
-  toast('Preparando recibos...','ok');
+  toast('Generando recibos... esto puede tardar unos segundos','ok');
 
   const[{data:mensajeros},{data:quinData}]=await Promise.all([
     sb.from('quincena_mensajeros')
       .select('id,nombre_display,mensajero_id,correo_xcargo,total_bruto,total_entregas')
       .eq('quincena_id',quinId)
-      .not('mensajero_id','is',null) // Solo los que tienen match en BD
+      .not('mensajero_id','is',null)
       .order('nombre_display'),
     sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single(),
   ]);
 
   if(!mensajeros?.length||!quinData){toast('Sin datos para generar','wa');return;}
 
-  // Descuentos pendientes de todos
   const mensIds=mensajeros.map(m=>m.mensajero_id);
   const{data:todosDescs}=await sb.from('descuentos')
     .select('mensajero_id,id,concepto,valor,numero_guia')
@@ -4566,16 +4618,17 @@ async function descargarTodosRecibos(quinId, quinNombre){
     descPorMens[d.mensajero_id].push(d);
   });
 
-  // Datos de mensajeros (banco, cuenta, etc.)
   const{data:mensDB}=await sb.from('mensajeros')
     .select('id,nombre_completo,num_documento,telefono,placa,banco,num_cuenta,tipo_cuenta')
     .in('id',mensIds);
   const mensDBMap={};
   (mensDB||[]).forEach(m=>mensDBMap[m.id]=m);
 
+  const zip=new JSZip();
+  const carpetaQ=quinNombre.replace(/[^a-zA-Z0-9]/g,'_');
   let generados=0;
+
   for(const qm of mensajeros){
-    // Obtener detalle del mensajero
     const{data:detalle}=await sb.from('quincena_detalle')
       .select('dia,fecha,entregas,valor')
       .eq('quincena_mensajero_id',qm.id)
@@ -4598,15 +4651,49 @@ async function descargarTodosRecibos(quinId, quinNombre){
     };
 
     try{
-      generarReciboPDF(p, mens, qm.id);
+      // Generar PDF en memoria (sin descargar)
+      const pdfBytes=generarReciboPDFBytes(p, mens, qm.id);
+      const nombreArchivo=`${mens.nombre_completo||qm.nombre_display}`.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')+'.pdf';
+      zip.folder(carpetaQ).file(nombreArchivo, pdfBytes);
       generados++;
-      // Pequeña pausa entre PDFs para no saturar el browser
-      await new Promise(r=>setTimeout(r,400));
     }catch(e){
       console.error('Error generando recibo de',qm.nombre_display,e);
     }
   }
-  toast(`${generados} recibos descargados ✓`,'ok');
+
+  if(!generados){toast('No se pudo generar ningún recibo','er');return;}
+
+  // Generar y descargar el ZIP
+  const content=await zip.generateAsync({type:'blob'});
+  const url=URL.createObjectURL(content);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`Recibos_${carpetaQ}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(`ZIP con ${generados} recibos descargado ✓`,'ok');
+}
+
+// Versión que retorna bytes en lugar de descargar directamente
+function generarReciboPDFBytes(p, mens, liqId){
+  // Reutiliza toda la lógica de generarReciboPDF pero retorna ArrayBuffer
+  const {jsPDF}=window.jspdf;
+  // Llamar la función original pero interceptar el save
+  const docNum=mens?.num_documento||'SIN-CC';
+  const reciboNum=`CC${docNum}-${String(p.mes).padStart(2,'0')}${p.año}-${p.quincena==='Primera quincena'?'Q1':'Q2'}`;
+  const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
+  // Crear doc temporal
+  const docTemp=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
+  // Usar la función existente redirigiendo el output
+  // La forma más simple: llamar generarReciboPDF con output en memoria
+  const originalSave=jsPDF.prototype.save;
+  let pdfOutput=null;
+  jsPDF.prototype.save=function(name){
+    pdfOutput=this.output('arraybuffer');
+  };
+  generarReciboPDF(p, mens, liqId);
+  jsPDF.prototype.save=originalSave;
+  return pdfOutput;
 }
 async function verReciboGuardado(liqId){
   setBar('Recibo','Nómina');
