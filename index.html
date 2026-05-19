@@ -232,7 +232,7 @@ const nmUsuarios={'usuarios':1,'usuario-detalle':1,'usuario-nuevo':2,'zona-menu'
 
 // Páginas que pertenecen a cada zona
 const ZONA_PAQUETERIA=['home','contenedores','cont-detalle','cont-mensajero','importar','asignar','asignar-scan','asignar-lista','buscar','mensajeros','mens-gestionar','mens-historial','mens-paquetes'];
-const ZONA_NOMINA=['nomina-home','nomina-liquidar','nomina-descuentos','nomina-desc-individual','nomina-desc-grupal','ver-recibo'];
+const ZONA_NOMINA=['nomina-home','nomina-liquidar','nomina-descuentos','nomina-desc-individual','nomina-desc-grupal','ver-recibo','quincena-detalle','quincena-mensajero-recibo'];
 const ZONA_USUARIOS=['usuarios','usuario-detalle','usuario-nuevo'];
 
 function setNavZona(page){
@@ -2208,7 +2208,10 @@ async function pgQuincenaDetalle(){
         <div style="font-weight:700;font-size:clamp(18px,5vw,22px);font-family:var(--mo);color:var(--grn)">${fmtCOP(totalBruto)}</div>
         <div style="font-size:var(--fss);color:var(--tx3)">${mensajeros.length} mensajeros · ${totalEntregas.toLocaleString()} entregas</div>
       </div>
-      <button class="btn btn-p btn-s" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ PDF Contabilidad</button>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        <button class="btn btn-p btn-s" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ PDF Contabilidad</button>
+        <button class="btn btn-o btn-s" onclick="descargarTodosRecibos('${quinId}','${esc(quinNombre)}')">⬇ Todos los recibos</button>
+      </div>
     </div>
     <div class="sec-title">Mensajeros</div>
   `;
@@ -4534,7 +4537,77 @@ function mostrarClaveDialog(nombre, usuario, clave){
   },1000);
 }
 
-// ── Ver recibo guardado desde el historial de nómina ──
+// ── Descarga masiva de recibos de una quincena ──
+async function descargarTodosRecibos(quinId, quinNombre){
+  toast('Preparando recibos...','ok');
+
+  const[{data:mensajeros},{data:quinData}]=await Promise.all([
+    sb.from('quincena_mensajeros')
+      .select('id,nombre_display,mensajero_id,correo_xcargo,total_bruto,total_entregas')
+      .eq('quincena_id',quinId)
+      .not('mensajero_id','is',null) // Solo los que tienen match en BD
+      .order('nombre_display'),
+    sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single(),
+  ]);
+
+  if(!mensajeros?.length||!quinData){toast('Sin datos para generar','wa');return;}
+
+  // Descuentos pendientes de todos
+  const mensIds=mensajeros.map(m=>m.mensajero_id);
+  const{data:todosDescs}=await sb.from('descuentos')
+    .select('mensajero_id,id,concepto,valor,numero_guia')
+    .in('mensajero_id',mensIds)
+    .eq('mes_quincena',quinData.mes).eq('año_quincena',quinData.año)
+    .eq('quincena',quinData.quincena).eq('aplicado',false);
+
+  const descPorMens={};
+  (todosDescs||[]).forEach(d=>{
+    if(!descPorMens[d.mensajero_id]) descPorMens[d.mensajero_id]=[];
+    descPorMens[d.mensajero_id].push(d);
+  });
+
+  // Datos de mensajeros (banco, cuenta, etc.)
+  const{data:mensDB}=await sb.from('mensajeros')
+    .select('id,nombre_completo,num_documento,telefono,placa,banco,num_cuenta,tipo_cuenta')
+    .in('id',mensIds);
+  const mensDBMap={};
+  (mensDB||[]).forEach(m=>mensDBMap[m.id]=m);
+
+  let generados=0;
+  for(const qm of mensajeros){
+    // Obtener detalle del mensajero
+    const{data:detalle}=await sb.from('quincena_detalle')
+      .select('dia,fecha,entregas,valor')
+      .eq('quincena_mensajero_id',qm.id)
+      .order('dia');
+
+    const mens=mensDBMap[qm.mensajero_id]||{nombre_completo:qm.nombre_display};
+    const descs=descPorMens[qm.mensajero_id]||[];
+    const totalDescuentos=descs.reduce((s,d)=>s+Number(d.valor||0),0);
+
+    const p={
+      mensajero:mens.nombre_completo||qm.nombre_display,
+      mes:quinData.mes,
+      año:quinData.año,
+      quincena:quinData.quincena==='Q1'?'Primera quincena':'Segunda quincena',
+      resumen:(detalle||[]).map(d=>({dia:d.dia,paquetes:d.entregas,valor:d.valor})),
+      totalBruto:Number(qm.total_bruto),
+      totalDescuentos,
+      totalNeto:Number(qm.total_bruto)-totalDescuentos,
+      descuentosPend:descs,
+    };
+
+    try{
+      generarReciboPDF(p, mens, qm.id);
+      generados++;
+      // Pequeña pausa entre PDFs para no saturar el browser
+      await new Promise(r=>setTimeout(r,400));
+    }catch(e){
+      console.error('Error generando recibo de',qm.nombre_display,e);
+    }
+  }
+  toast(`${generados} recibos descargados ✓`,'ok');
+}
 async function verReciboGuardado(liqId){
   setBar('Recibo','Nómina');
   setP(loader());
