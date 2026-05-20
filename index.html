@@ -3695,6 +3695,7 @@ async function pgUsuarios(){
   setBar('Usuarios','STC Express');
   document.getElementById('barRight').innerHTML=`
     <div style="display:flex;gap:6px">
+      <button class="btn btn-o btn-s" style="font-size:10px;padding:0 8px" onclick="exportarUsuariosExcel()">⬇ Excel</button>
       <button class="btn btn-o btn-s" style="font-size:10px;padding:0 8px" onclick="go('usuario-nuevo')">+ Nuevo</button>
     </div>`;
   setP(loader());
@@ -4844,6 +4845,70 @@ function numALetras(n){
   if(mil>0) r+=(mil===1?'MIL':grupo(mil)+' MIL')+' ';
   if(res>0) r+=grupo(res);
   return r.trim()+' PESOS M/CTE';
+}
+
+// ── Exportar usuarios a Excel ──
+async function exportarUsuariosExcel(){
+  toast('Generando Excel...','ok');
+  try{
+    const{data:todos}=await sb.from('mensajeros')
+      .select('nombre_completo,num_documento,telefono,correo,direccion,placa,zona_principal,fecha_ingreso,activo,fecha_retiro,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,banco,tipo_cuenta,num_cuenta,referencia_nombre,referencia_celular')
+      .order('activo',{ascending:false})
+      .order('nombre_completo');
+
+    if(!todos?.length){toast('Sin datos','wa');return;}
+
+    const cols=[
+      {key:'nombre_completo',          label:'Nombre completo'},
+      {key:'num_documento',            label:'Cédula'},
+      {key:'telefono',                 label:'Teléfono'},
+      {key:'correo',                   label:'Correo'},
+      {key:'direccion',                label:'Dirección'},
+      {key:'placa',                    label:'Placa'},
+      {key:'zona_principal',           label:'Zona'},
+      {key:'fecha_ingreso',            label:'Fecha ingreso'},
+      {key:'activo',                   label:'Estado'},
+      {key:'fecha_retiro',             label:'Fecha retiro'},
+      {key:'usuario_propio',           label:'Usuario propio'},
+      {key:'usuario_xcargo',           label:'Usuario xcargo propio'},
+      {key:'usuario_xcargo_prestado',  label:'Usuario xcargo prestado'},
+      {key:'banco',                    label:'Banco'},
+      {key:'tipo_cuenta',              label:'Tipo cuenta'},
+      {key:'num_cuenta',               label:'Número cuenta'},
+      {key:'referencia_nombre',        label:'Referencia personal'},
+      {key:'referencia_celular',       label:'Celular referencia'},
+    ];
+
+    const filas=todos.map(m=>{
+      const fila={};
+      cols.forEach(c=>{
+        let val=m[c.key];
+        if(c.key==='activo') val=m.activo?'Activo':'Retirado';
+        else if(c.key==='usuario_propio') val=m.usuario_propio===true?'Sí':m.usuario_propio===false?'No':'';
+        else if(c.key==='fecha_ingreso'||c.key==='fecha_retiro') val=val?String(val).slice(0,10):'';
+        fila[c.label]=val??'';
+      });
+      return fila;
+    });
+
+    const wb=XLSX.utils.book_new();
+    const activos=filas.filter((_,i)=>todos[i].activo);
+    const retirados=filas.filter((_,i)=>!todos[i].activo);
+    const headers=cols.map(c=>c.label);
+    const wsActivos=XLSX.utils.json_to_sheet(activos,{header:headers});
+    const wsRetirados=XLSX.utils.json_to_sheet(retirados,{header:headers});
+    const colWidths=cols.map(c=>({wch:Math.max(c.label.length+2,20)}));
+    wsActivos['!cols']=colWidths;
+    wsRetirados['!cols']=colWidths;
+    XLSX.utils.book_append_sheet(wb,wsActivos,`Activos (${activos.length})`);
+    XLSX.utils.book_append_sheet(wb,wsRetirados,`Retirados (${retirados.length})`);
+    const hoy=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb,`Mensajeros_STC_${hoy}.xlsx`);
+    toast(`Excel con ${todos.length} mensajeros generado ✓`,'ok');
+  }catch(e){
+    console.error(e);
+    toast('Error: '+e.message,'er');
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
