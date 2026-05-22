@@ -3700,11 +3700,17 @@ async function pgUsuarios(){
     </div>`;
   setP(loader());
 
-  const [{data:mensajeros},{data:prestamos},{data:enUsoRaw}]=await Promise.all([
+  const [{data:mensajeros},{data:prestamos},{data:enUsoRaw},{data:docsConteo}]=await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,fecha_retiro,created_at').order('activo',{ascending:false}).order('nombre_completo'),
     sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo,clave_enc').order('nombre'),
     sb.from('mensajeros').select('nombre_completo,usuario_xcargo_prestado').eq('activo',true).not('usuario_xcargo_prestado','is',null),
+    sb.from('mensajero_documentos').select('mensajero_id,estado').in('estado',['subido','aprobado']),
   ]);
+
+  // Mapa mensajero_id → cantidad de docs completos
+  const docsMap={};
+  (docsConteo||[]).forEach(d=>{docsMap[d.mensajero_id]=(docsMap[d.mensajero_id]||0)+1;});
+  const TOTAL_DOCS=7;
 
   // Mapa de correo prestado → nombre del mensajero que lo usa
   const enUsoMap={};
@@ -3735,6 +3741,8 @@ async function pgUsuarios(){
     h+=`<p class="empty">Sin mensajeros activos</p>`;
   } else {
     activos.forEach(m=>{
+      const ndocs=docsMap[m.id]||0;
+      const docsOk=ndocs>=TOTAL_DOCS;
       h+=`<div class="card usuario-card" data-search="${esc((m.nombre_completo+' '+(m.num_documento||'')).toLowerCase())}" onclick="S._userId='${m.id}';S._userNombre='${esc(m.nombre_completo)}';go('usuario-detalle')">
         <div class="card-row">
           <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur);font-weight:700;font-size:15px;font-family:var(--mo)">
@@ -3747,6 +3755,7 @@ async function pgUsuarios(){
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
             <span class="b b-gr">Activo</span>
+            <span style="font-size:9px;color:${docsOk?'var(--grn)':'var(--amb)'}">${ndocs}/${TOTAL_DOCS} docs</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;color:var(--tx3)"><path d="M9 18l6-6-6-6"/></svg>
           </div>
         </div>
@@ -3982,13 +3991,70 @@ async function pgUsuarioDetalle(){
     });
   }
 
-  // Acciones
+  // Botones de acción
   h+=`<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
     <button class="btn btn-o btn-s" style="flex:1" onclick="editarUsuario('${userId}')">✏️ Editar datos</button>
     <button class="btn ${m.activo?'btn-d':'btn-g'} btn-s" style="flex:1" onclick="toggleUsuarioActivo('${userId}','${esc(m.nombre_completo)}',${m.activo})">
       ${m.activo?'Registrar retiro':'Reactivar'}
     </button>
   </div>`;
+
+  // ── Sección de documentos ──
+  const DOCS_CONFIG=[
+    {tipo:'foto',            label:'Foto del mensajero',              icono:'🤳'},
+    {tipo:'cedula_frente',   label:'Cédula (frente)',                  icono:'🪪'},
+    {tipo:'cedula_reverso',  label:'Cédula (reverso)',                 icono:'🪪'},
+    {tipo:'recibo_publico',  label:'Recibo de servicio público',       icono:'🧾'},
+    {tipo:'hoja_vida',       label:'Hoja de vida',                     icono:'📄'},
+    {tipo:'acta_responsabilidad', label:'Acta de responsabilidad',    icono:'📋'},
+    {tipo:'autorizacion_datos',   label:'Autorización tratamiento datos', icono:'🔐'},
+  ];
+
+  const{data:docs}=await sb.from('mensajero_documentos').select('*').eq('mensajero_id',userId);
+  const docsMap={};
+  (docs||[]).forEach(d=>docsMap[d.tipo]=d);
+
+  const total=DOCS_CONFIG.length;
+  const subidos=DOCS_CONFIG.filter(d=>['subido','aprobado'].includes(docsMap[d.tipo]?.estado)).length;
+  const pct=Math.round(100*subidos/total);
+
+  h+=`<div class="sec-title" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between">
+    <span>Documentos</span>
+    <span style="font-size:var(--fss);color:${pct===100?'var(--grn)':'var(--amb)'};font-weight:600">${subidos}/${total} completos</span>
+  </div>`;
+
+  // Barra de progreso
+  h+=`<div style="background:var(--brd);border-radius:99px;height:6px;margin-bottom:12px;overflow:hidden">
+    <div style="width:${pct}%;height:100%;background:${pct===100?'var(--grn)':'var(--amb)'};border-radius:99px;transition:width .4s"></div>
+  </div>`;
+
+  DOCS_CONFIG.forEach(cfg=>{
+    const doc=docsMap[cfg.tipo];
+    const est=doc?.estado||'pendiente';
+    const colores={pendiente:'var(--tx3)',subido:'var(--acc)',aprobado:'var(--grn)',rechazado:'var(--red)'};
+    const labels={pendiente:'Pendiente',subido:'Subido',aprobado:'Aprobado',rechazado:'Rechazado'};
+    const badgeCol={pendiente:'b-gy',subido:'b-bl',aprobado:'b-gr',rechazado:'b-rd'};
+    h+=`<div class="card" style="cursor:default;margin-bottom:6px">
+      <div class="card-row" style="align-items:center">
+        <div style="font-size:20px;width:32px;flex-shrink:0">${cfg.icono}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:var(--fsm);font-weight:500">${cfg.label}</div>
+          ${doc?.archivo_nombre?`<div style="font-size:var(--fss);color:var(--tx3);margin-top:1px">📎 ${esc(doc.archivo_nombre)}</div>`:''}
+          ${doc?.notas?`<div style="font-size:var(--fss);color:var(--tx3)">${esc(doc.notas)}</div>`:''}
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+          <span class="b ${badgeCol[est]}">${labels[est]}</span>
+          <div style="display:flex;gap:4px">
+            ${doc?.archivo_path?`<button class="btn btn-o" style="font-size:9px;padding:2px 6px;height:auto" onclick="verDocumento('${esc(doc.archivo_path)}','${esc(doc.archivo_nombre||cfg.label)}')">Ver</button>`:''}
+            <button class="btn btn-p" style="font-size:9px;padding:2px 6px;height:auto" onclick="subirDocumento('${userId}','${cfg.tipo}','${esc(cfg.label)}')">
+              ${doc?.archivo_path?'Reemplazar':'Subir'}
+            </button>
+            ${doc?.archivo_path?`<button class="btn btn-o" style="font-size:9px;padding:2px 6px;height:auto" onclick="cambiarEstadoDoc('${doc.id}','${est}','${userId}')">Estado</button>`:''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+  });
 
   setP(h);
 }
@@ -4847,7 +4913,69 @@ function numALetras(n){
   return r.trim()+' PESOS M/CTE';
 }
 
-// ── Exportar usuarios a Excel ──
+// ── Gestión de documentos ──
+async function subirDocumento(mensajeroId, tipo, label){
+  // Crear input file dinámico
+  const inp=document.createElement('input');
+  inp.type='file';
+  inp.accept='image/*,.pdf';
+  inp.onchange=async()=>{
+    const file=inp.files[0];
+    if(!file) return;
+    if(file.size>10*1024*1024){toast('Máximo 10MB por archivo','er');return;}
+    toast('Subiendo...','ok');
+    try{
+      const ext=file.name.split('.').pop();
+      const path=`${mensajeroId}/${tipo}_${Date.now()}.${ext}`;
+      // Subir a Supabase Storage
+      const{error:upErr}=await sb.storage.from('mensajero-docs').upload(path,file,{upsert:true});
+      if(upErr)throw upErr;
+      // Guardar/actualizar registro en BD
+      const{data:existe}=await sb.from('mensajero_documentos').select('id').eq('mensajero_id',mensajeroId).eq('tipo',tipo).maybeSingle();
+      if(existe){
+        await sb.from('mensajero_documentos').update({
+          archivo_path:path, archivo_nombre:file.name,
+          estado:'subido', subido_por:S.user.id
+        }).eq('id',existe.id);
+      } else {
+        await sb.from('mensajero_documentos').insert({
+          mensajero_id:mensajeroId, tipo, estado:'subido',
+          archivo_path:path, archivo_nombre:file.name, subido_por:S.user.id
+        });
+      }
+      toast(`${label} subido ✓`,'ok');
+      // Recargar ficha
+      go('usuario-detalle');
+    }catch(e){toast('Error: '+e.message,'er');}
+  };
+  inp.click();
+}
+
+async function verDocumento(path, nombre){
+  try{
+    const{data,error}=await sb.storage.from('mensajero-docs').createSignedUrl(path,300);
+    if(error)throw error;
+    window.open(data.signedUrl,'_blank');
+  }catch(e){toast('Error al abrir: '+e.message,'er');}
+}
+
+function cambiarEstadoDoc(docId, estadoActual, mensajeroId){
+  const estados=['pendiente','subido','aprobado','rechazado'];
+  const labels={pendiente:'⏳ Pendiente',subido:'📤 Subido',aprobado:'✅ Aprobado',rechazado:'❌ Rechazado'};
+  dialog('Cambiar estado del documento','',
+    `<div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+      ${estados.map(e=>`<button class="btn ${e===estadoActual?'btn-p':'btn-o'} btn-s" onclick="closeDlg();aplicarEstadoDoc('${docId}','${e}','${mensajeroId}')">${labels[e]}</button>`).join('')}
+    </div>`,
+    [{l:'Cancelar',fn:closeDlg}]
+  );
+}
+
+async function aplicarEstadoDoc(docId, estado, mensajeroId){
+  await sb.from('mensajero_documentos').update({estado}).eq('id',docId);
+  toast('Estado actualizado ✓','ok');
+  S._userId=mensajeroId;
+  go('usuario-detalle');
+}
 async function exportarUsuariosExcel(){
   toast('Generando Excel...','ok');
   try{
