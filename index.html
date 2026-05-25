@@ -4598,24 +4598,35 @@ async function usuDoImport(){
 // ══════════════════════════════════════════════════════════════════
 // HISTORIAL USUARIOS XCARGO
 // ══════════════════════════════════════════════════════════════════
-function abrirFormHistXcargo(mensajeroId, registroId){
-  // Buscar datos del registro si es edición
+async function abrirFormHistXcargo(mensajeroId, registroId){
   const isEdit=!!registroId;
-  let datosEdit={tipo:'prestado',usuario_xcargo:'',fecha_desde:'',fecha_hasta:'',notas:''};
+  let datosEdit={tipo:'prestado',usuario_xcargo:'',fecha_desde:'',notas:''};
 
   if(isEdit){
-    // Buscar en el DOM actual el registro (ya cargado en histXcargo)
     const card=document.querySelector(`[data-hid="${registroId}"]`);
     if(card){
       datosEdit={
         tipo:card.dataset.tipo||'prestado',
         usuario_xcargo:card.dataset.usuario||'',
         fecha_desde:card.dataset.desde||'',
-        fecha_hasta:card.dataset.hasta||'',
         notas:card.dataset.notas||''
       };
     }
   }
+
+  // Cargar usuarios del pool de prestamo
+  const{data:pool}=await sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa').eq('activo',true).order('nombre');
+  const opcPool=(pool||[]).map(u=>
+    `<option value="${esc(u.usuario_xcargo)}" ${datosEdit.usuario_xcargo===u.usuario_xcargo?'selected':''}>
+      ${esc(u.nombre)}${u.placa?' · '+esc(u.placa):''} — ${esc(u.usuario_xcargo)}
+    </option>`
+  ).join('');
+
+  // Si en edición el usuario actual no está en el pool, agregar opción para no perderlo
+  const enPool=(pool||[]).some(u=>u.usuario_xcargo===datosEdit.usuario_xcargo);
+  const opcionActual=isEdit&&datosEdit.usuario_xcargo&&!enPool
+    ? `<option value="${esc(datosEdit.usuario_xcargo)}" selected>${esc(datosEdit.usuario_xcargo)}</option>`
+    : '';
 
   dialog(
     isEdit?'Editar usuario xcargo':'Agregar usuario xcargo',
@@ -4625,28 +4636,35 @@ function abrirFormHistXcargo(mensajeroId, registroId){
         <label>Tipo</label>
         <div style="display:flex;gap:8px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:var(--bg);border:1px solid var(--brd2);border-radius:var(--r2);padding:8px 10px" id="lblPrestado">
-            <input type="radio" name="tipoHist" value="prestado" ${(!isEdit||datosEdit.tipo==='prestado')?'checked':''} onchange="document.getElementById('lblPrestado').style.borderColor=this.checked?'var(--amb)':'var(--brd2)';document.getElementById('lblPropio').style.borderColor='var(--brd2)'">
+            <input type="radio" name="tipoHist" value="prestado" ${(!isEdit||datosEdit.tipo==='prestado')?'checked':''} onchange="document.getElementById('lblPrestado').style.borderColor=this.checked?'var(--amb)':'var(--brd2)';document.getElementById('lblPropio').style.borderColor='var(--brd2)';document.getElementById('secUsuarioPrestado').style.display=this.checked?'block':'none';document.getElementById('secUsuarioPropio').style.display=this.checked?'none':'block'">
             🤝 Prestado
           </label>
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:var(--bg);border:1px solid var(--brd2);border-radius:var(--r2);padding:8px 10px" id="lblPropio">
-            <input type="radio" name="tipoHist" value="propio" ${(isEdit&&datosEdit.tipo==='propio')?'checked':''} onchange="document.getElementById('lblPropio').style.borderColor=this.checked?'var(--acc)':'var(--brd2)';document.getElementById('lblPrestado').style.borderColor='var(--brd2)'">
+            <input type="radio" name="tipoHist" value="propio" ${(isEdit&&datosEdit.tipo==='propio')?'checked':''} onchange="document.getElementById('lblPropio').style.borderColor=this.checked?'var(--acc)':'var(--brd2)';document.getElementById('lblPrestado').style.borderColor='var(--brd2)';document.getElementById('secUsuarioPrestado').style.display=this.checked?'none':'block';document.getElementById('secUsuarioPropio').style.display=this.checked?'block':'none'">
             ✅ Propio
           </label>
         </div>
       </div>
-      <div>
-        <label>Correo xcargo *</label>
-        <input class="inp" id="histUsuario" type="email" placeholder="correo@ejemplo.com" value="${esc(datosEdit.usuario_xcargo)}">
+
+      <!-- Selector para usuario prestado -->
+      <div id="secUsuarioPrestado" style="display:${(!isEdit||datosEdit.tipo==='prestado')?'block':'none'}">
+        <label>Usuario xcargo prestado *</label>
+        <select class="inp sel" id="histUsuarioPrestado">
+          <option value="">— Seleccionar usuario —</option>
+          ${opcionActual}
+          ${opcPool}
+        </select>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div>
-          <label>Desde *</label>
-          <input class="inp" id="histDesde" type="date" value="${datosEdit.fecha_desde}">
-        </div>
-        <div>
-          <label>Hasta</label>
-          <input class="inp" id="histHasta" type="date" value="${datosEdit.fecha_hasta}" placeholder="Vacío = vigente">
-        </div>
+
+      <!-- Input libre para usuario propio -->
+      <div id="secUsuarioPropio" style="display:${(isEdit&&datosEdit.tipo==='propio')?'block':'none'}">
+        <label>Correo xcargo propio *</label>
+        <input class="inp" id="histUsuarioPropio" type="email" placeholder="correo@ejemplo.com" value="${(isEdit&&datosEdit.tipo==='propio')?esc(datosEdit.usuario_xcargo):''}">
+      </div>
+
+      <div>
+        <label>Fecha desde *</label>
+        <input class="inp" id="histDesde" type="date" value="${datosEdit.fecha_desde}">
       </div>
       <div>
         <label>Notas</label>
@@ -4658,7 +4676,6 @@ function abrirFormHistXcargo(mensajeroId, registroId){
       {l:isEdit?'Actualizar':'Guardar', cl:'btn-p', fn:()=>guardarHistXcargo(mensajeroId, registroId)}
     ]
   );
-  // Destacar el tipo seleccionado al abrir
   setTimeout(()=>{
     if(datosEdit.tipo==='prestado') document.getElementById('lblPrestado').style.borderColor='var(--amb)';
     else document.getElementById('lblPropio').style.borderColor='var(--acc)';
@@ -4666,26 +4683,27 @@ function abrirFormHistXcargo(mensajeroId, registroId){
 }
 
 async function guardarHistXcargo(mensajeroId, registroId){
-  const usuario=document.getElementById('histUsuario')?.value?.trim()?.toLowerCase();
-  const desde=document.getElementById('histDesde')?.value;
-  const hasta=document.getElementById('histHasta')?.value||null;
-  const notas=document.getElementById('histNotas')?.value?.trim()||null;
   const tipo=document.querySelector('input[name="tipoHist"]:checked')?.value||'prestado';
+  const usuario=(tipo==='prestado'
+    ? document.getElementById('histUsuarioPrestado')?.value
+    : document.getElementById('histUsuarioPropio')?.value
+  )?.trim()?.toLowerCase();
+  const desde=document.getElementById('histDesde')?.value;
+  const notas=document.getElementById('histNotas')?.value?.trim()||null;
 
-  if(!usuario||!desde){toast('Correo y fecha desde son obligatorios','er');return;}
-  if(hasta&&hasta<desde){toast('La fecha hasta no puede ser anterior a la fecha desde','er');return;}
+  if(!usuario||!desde){toast('Usuario y fecha desde son obligatorios','er');return;}
 
   closeDlg();
   try{
     if(registroId){
       const{error}=await sb.from('historial_usuarios_xcargo')
-        .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta,notas})
+        .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:null,notas})
         .eq('id',registroId);
       if(error)throw error;
       toast('Registro actualizado ✓','ok');
     } else {
       const{error}=await sb.from('historial_usuarios_xcargo')
-        .insert({mensajero_id:mensajeroId,usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta,notas});
+        .insert({mensajero_id:mensajeroId,usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:null,notas});
       if(error)throw error;
       toast('Usuario agregado al historial ✓','ok');
     }
