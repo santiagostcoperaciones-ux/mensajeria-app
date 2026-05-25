@@ -3506,7 +3506,7 @@ async function pgDescIndividual(){
       </div>
       <div>
         <label>Valor a descontar (COP) *</label>
-        <input class="inp" type="number" id="diValor" placeholder="15000" min="1">
+        <input class="inp" type="text" inputmode="numeric" id="diValor" placeholder="15000">
       </div>
       <div>
         <label>Fecha del evento *</label>
@@ -3569,6 +3569,36 @@ async function guardarDescIndividual(){
 }
 
 // ── Nuevo descuento grupal ──
+// ── Marcar todos los descuentos de un grupal como aplicados ──
+async function marcarGrupalAplicado(grupalId, concepto){
+  dialog(
+    'Aplicar descuento grupal',
+    `¿Marcar todos los descuentos de "${concepto}" como aplicados? Esto los quitará de la lista de pendientes.`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Sí, aplicar todos', cl:'btn-p', fn:async()=>{
+        closeDlg();
+        try{
+          // Traer los IDs de descuentos individuales de este grupal
+          const{data:partic}=await sb.from('descuentos_grupales_participantes')
+            .select('descuento_id').eq('descuento_grupal_id',grupalId);
+          const ids=(partic||[]).map(p=>p.descuento_id).filter(Boolean);
+          if(ids.length){
+            const{error}=await sb.from('descuentos').update({aplicado:true}).in('id',ids);
+            if(error)throw error;
+          }
+          // Marcar el grupal como cerrado también
+          await sb.from('descuentos_grupales').update({cerrado:true}).eq('id',grupalId);
+          toast(`Descuentos de "${concepto}" aplicados ✓`,'ok');
+          pgDescGrupalDetalle();
+        }catch(e){
+          toast('Error: '+e.message,'er');
+        }
+      }}
+    ]
+  );
+}
+
 // ── Ver detalle descuento grupal ──
 function verDetalleGrupal(id){
   S._grupalId=id;
@@ -3612,10 +3642,28 @@ async function pgDescGrupalDetalle(){
         <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:3px">📝 Observaciones</div>
         <div style="color:var(--tx1)">${esc(g.notas)}</div>
       </div>`:'<div style="margin-top:10px;font-size:var(--fss);color:var(--tx3);font-style:italic">Sin observaciones registradas</div>'}
-    </div>
+    </div>`;
 
-    <div class="sec-title">Reparto por mensajero (${n})</div>`;
+  // Contar cuántos descuentos individuales de este grupal están pendientes
+  const idsPart=(partic||[]).map(p=>p.descuento_id).filter(Boolean);
+  let pendCount=0;
+  if(idsPart.length){
+    const{count}=await sb.from('descuentos').select('id',{count:'exact',head:true})
+      .in('id',idsPart).eq('aplicado',false);
+    pendCount=count||0;
+  }
 
+  if(pendCount>0){
+    h+=`<div style="background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.25);border-radius:var(--r2);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div style="font-weight:600;font-size:var(--fsm)">⏳ ${pendCount} descuento${pendCount>1?'s':''} pendiente${pendCount>1?'s':''}</div>
+        <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">Aplica todos los descuentos de este grupal de una vez</div>
+      </div>
+      <button class="btn btn-p btn-s" onclick="marcarGrupalAplicado('${g.id}','${esc(g.concepto)}')">✓ Aplicar todos</button>
+    </div>`;
+  }
+
+  h+=`<div class="sec-title">Reparto por mensajero (${n})</div>`;
   (partic||[]).forEach(p=>{
     h+=`<div class="card" style="cursor:default">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
@@ -3631,7 +3679,18 @@ async function pgDescGrupalDetalle(){
 async function pgDescGrupal(){
   setBar('Descuento grupal','Nómina');
   setP(loader());
-  const{data:mensajeros}=await sb.from('mensajeros').select('id,nombre_completo').eq('activo',true).order('nombre_completo');
+
+  const hace60=new Date(Date.now()-60*24*3600*1000).toISOString().slice(0,10);
+  const[{data:activos},{data:retirados}]=await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo').eq('activo',true).order('nombre_completo'),
+    sb.from('mensajeros').select('id,nombre_completo,fecha_retiro').eq('activo',false)
+      .gte('fecha_retiro',hace60).order('nombre_completo'),
+  ]);
+
+  const todosMens=[
+    ...(activos||[]).map(m=>({...m,retirado:false})),
+    ...(retirados||[]).map(m=>({...m,retirado:true})),
+  ];
 
   setP(`
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -3641,7 +3700,7 @@ async function pgDescGrupal(){
       </div>
       <div>
         <label>Valor total del descuento (COP) *</label>
-        <input class="inp" type="number" id="dgValor" placeholder="120000" min="1" oninput="dgRecalc()">
+        <input class="inp" type="text" inputmode="numeric" id="dgValor" placeholder="120000" oninput="dgRecalc()">
       </div>
       <div>
         <label>Fecha del evento *</label>
@@ -3659,10 +3718,10 @@ async function pgDescGrupal(){
         <button class="btn btn-o btn-s" style="flex:1;font-size:var(--fss)" onclick="dgSelectAll(false)">Ninguno</button>
       </div>
       <div id="dgMensList" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column;gap:4px">
-        ${(mensajeros||[]).map(m=>`
-          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border-radius:var(--r2);cursor:pointer">
+        ${todosMens.map(m=>`
+          <label style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border-radius:var(--r2);cursor:pointer${m.retirado?';opacity:.7':''}">
             <input type="checkbox" id="dgm_${m.id}" value="${m.id}" onchange="dgRecalc()" style="width:16px;height:16px;flex-shrink:0">
-            <span style="flex:1;font-size:var(--fsm)">${esc(m.nombre_completo)}</span>
+            <span style="flex:1;font-size:var(--fsm)">${esc(m.nombre_completo)}${m.retirado?` <span style="font-size:10px;color:var(--tx3)">(retirado)</span>`:''}</span>
             <span style="font-family:var(--mo);font-size:var(--fss);color:var(--tx3)" id="dgv_${m.id}">—</span>
           </label>`).join('')}
       </div>
