@@ -5229,7 +5229,7 @@ async function verReciboGuardado(liqId){
 
   const[{data:liq},{data:detalle}]=await Promise.all([
     sb.from('liquidaciones')
-      .select('id,mes,año,quincena,total_bruto,total_descuentos,total_neto,created_at,mensajeros(nombre_completo,num_documento,telefono,placa)')
+      .select('id,mes,año,quincena,total_bruto,total_descuentos,total_neto,created_at,mensajero_id,mensajeros(nombre_completo,num_documento,telefono,placa)')
       .eq('id',liqId).single(),
     sb.from('liquidaciones_detalle')
       .select('dia,fecha,entregas,valor')
@@ -5251,7 +5251,7 @@ async function verReciboGuardado(liqId){
       // Fallback para recibos generados antes de la columna liquidacion_aplicada_id
       const{data:d2}=await sb.from('descuentos')
         .select('id,concepto,valor,numero_guia,aplicado')
-        .eq('mensajero_id',liq.mensajeros?.id||'')
+        .eq('mensajero_id', liq.mensajero_id)
         .eq('mes_quincena',liq.mes).eq('año_quincena',liq.año).eq('quincena',liq.quincena)
         .eq('aplicado',true);
       descs=d2||[];
