@@ -3972,7 +3972,7 @@ async function pgUsuarioDetalle(){
             const label=isProp?'Propio':'Prestado';
             const desde=h.fecha_desde?h.fecha_desde.slice(0,10):'—';
             const hasta=h.fecha_hasta?h.fecha_hasta.slice(0,10):'hoy';
-            return `<div style="background:${bg};border:1px solid ${border};border-radius:var(--r2);padding:8px 10px;font-size:var(--fss);margin-bottom:6px;position:relative">
+            return `<div data-hid="${h.id}" data-tipo="${h.tipo}" data-usuario="${esc(h.usuario_xcargo)}" data-desde="${h.fecha_desde||''}" data-hasta="${h.fecha_hasta||''}" data-notas="${esc(h.notas||'')}" style="background:${bg};border:1px solid ${border};border-radius:var(--r2);padding:8px 10px;font-size:var(--fss);margin-bottom:6px;position:relative">
               <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
                 <div style="flex:1;min-width:0">
                   <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
@@ -4688,6 +4688,10 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
         <label>Fecha desde *</label>
         <input class="inp" id="histDesde" type="date" value="${datosEdit.fecha_desde}">
       </div>
+      ${isEdit?`<div>
+        <label>Fecha hasta <span style="color:var(--tx3);font-weight:400">(dejar vacío si sigue vigente)</span></label>
+        <input class="inp" id="histHasta" type="date" value="${datosEdit.fecha_hasta||''}">
+      </div>`:''}
       <div>
         <label>Notas</label>
         <input class="inp" id="histNotas" placeholder="Ej: usuario de Alida mientras le creaban el propio" value="${esc(datosEdit.notas)}">
@@ -4711,23 +4715,41 @@ async function guardarHistXcargo(mensajeroId, registroId){
     : document.getElementById('histUsuarioPropio')?.value
   )?.trim()?.toLowerCase();
   const desde=document.getElementById('histDesde')?.value;
+  const hasta=document.getElementById('histHasta')?.value||null;
   const notas=document.getElementById('histNotas')?.value?.trim()||null;
 
   if(!usuario||!desde){toast('Usuario y fecha desde son obligatorios','er');return;}
+  if(hasta&&hasta<desde){toast('La fecha hasta no puede ser anterior a la fecha desde','er');return;}
 
   closeDlg();
   try{
     if(registroId){
       const{error}=await sb.from('historial_usuarios_xcargo')
-        .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:null,notas})
+        .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta||null,notas})
         .eq('id',registroId);
       if(error)throw error;
       toast('Registro actualizado ✓','ok');
     } else {
+      // Al agregar nuevo: cerrar automáticamente el registro vigente anterior (fecha_hasta = día antes del nuevo desde)
+      const desdeDt=new Date(desde+'T12:00:00');
+      const diaAnterior=new Date(desdeDt);
+      diaAnterior.setDate(diaAnterior.getDate()-1);
+      const fechaCorte=diaAnterior.toISOString().slice(0,10);
+
+      // Buscar registros vigentes del mismo mensajero (fecha_hasta IS NULL)
+      const{data:vigentes}=await sb.from('historial_usuarios_xcargo')
+        .select('id').eq('mensajero_id',mensajeroId).is('fecha_hasta',null);
+
+      if(vigentes?.length){
+        await sb.from('historial_usuarios_xcargo')
+          .update({fecha_hasta:fechaCorte})
+          .eq('mensajero_id',mensajeroId).is('fecha_hasta',null);
+      }
+
       const{error}=await sb.from('historial_usuarios_xcargo')
         .insert({mensajero_id:mensajeroId,usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:null,notas});
       if(error)throw error;
-      toast('Usuario agregado al historial ✓','ok');
+      toast('Usuario agregado y anterior cerrado automáticamente ✓','ok');
     }
     go('usuario-detalle');
   }catch(e){toast('Error: '+e.message,'er');}
