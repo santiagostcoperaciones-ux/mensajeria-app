@@ -234,7 +234,7 @@ const nmUsuarios={'usuarios':1,'usuario-detalle':1,'usuario-nuevo':2,'zona-menu'
 
 // Páginas que pertenecen a cada zona
 const ZONA_PAQUETERIA=['home','contenedores','cont-detalle','cont-mensajero','importar','asignar','asignar-scan','asignar-lista','buscar','mensajeros','mens-gestionar','mens-historial','mens-paquetes'];
-const ZONA_NOMINA=['nomina-home','nomina-liquidar','nomina-descuentos','nomina-desc-individual','nomina-desc-grupal','ver-recibo','quincena-detalle','quincena-mensajero-recibo'];
+const ZONA_NOMINA=['nomina-home','nomina-liquidar','nomina-descuentos','nomina-desc-individual','nomina-desc-grupal','nomina-desc-grupal-detalle','ver-recibo','quincena-detalle','quincena-mensajero-recibo'];
 const ZONA_USUARIOS=['usuarios','usuario-detalle','usuario-nuevo'];
 
 function setNavZona(page){
@@ -300,6 +300,7 @@ async function go(page,push=true){
       case 'nomina-descuentos':  await pgNominaDescuentos();break;
       case 'nomina-desc-individual': await pgDescIndividual();break;
       case 'nomina-desc-grupal': await pgDescGrupal();break;
+      case 'nomina-desc-grupal-detalle': await pgDescGrupalDetalle();break;
       case 'ver-recibo':         await verReciboGuardado(S._verReciboId);break;
       case 'quincena-detalle':   await pgQuincenaDetalle();break;
       case 'quincena-mensajero-recibo': await pgQuinMensajeroRecibo();break;
@@ -3384,9 +3385,10 @@ async function pgNominaDescuentos(){
             ${d.numero_guia?`<div style="font-size:var(--fss);color:var(--tx3);font-family:var(--mo)">Guía: ${esc(d.numero_guia)}</div>`:''}
             <div style="font-size:var(--fss);color:var(--tx3)">${MESES_ES[d.mes_quincena]} ${d.año_quincena} · ${d.quincena}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
+          <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
             <div style="color:var(--red);font-family:var(--mo);font-weight:600">${fmtCOP(d.valor)}</div>
-            <span class="b b-am" style="margin-top:4px;display:block">Pendiente</span>
+            <span class="b b-am">Pendiente</span>
+            <button class="btn btn-o btn-s" style="font-size:10px" onclick="marcarDescAplicado('${d.id}','${esc(d.mensajeros?.nombre_completo||'')}')">✓ Marcar aplicado</button>
           </div>
         </div>
       </div>`;
@@ -3417,15 +3419,17 @@ async function pgNominaDescuentos(){
   if(grupales?.length){
     h+=`<div class="sec-title">Grupales</div>`;
     grupales.forEach(g=>{
-      h+=`<div class="card" style="cursor:default;${!g.cerrado?'border-left:3px solid var(--acc)':''}">
+      h+=`<div class="card" style="cursor:pointer;${!g.cerrado?'border-left:3px solid var(--acc)':''}" onclick="verDetalleGrupal('${g.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="min-width:0;flex:1">
             <div style="font-weight:500">${esc(g.concepto)}</div>
             <div style="font-size:var(--fss);color:var(--tx2)">${MESES_ES[g.mes_quincena]} ${g.año_quincena} · ${g.quincena} · ${fmtDate(g.fecha_evento)}</div>
+            ${g.notas?`<div style="font-size:var(--fss);color:var(--tx3);margin-top:2px;font-style:italic">${esc(g.notas)}</div>`:''}
           </div>
-          <div style="text-align:right;flex-shrink:0">
+          <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:4px">
             <div style="font-family:var(--mo);font-weight:600;color:var(--red)">${fmtCOP(g.valor_total)}</div>
-            <span class="b ${g.cerrado?'b-gy':'b-bl'}" style="margin-top:3px;display:block">${g.cerrado?'Cerrado':'Abierto'}</span>
+            <span class="b ${g.cerrado?'b-gy':'b-bl'}">${g.cerrado?'Cerrado':'Abierto'}</span>
+            <span style="font-size:10px;color:var(--tx3)">Ver detalle ›</span>
           </div>
         </div>
       </div>`;
@@ -3441,12 +3445,39 @@ async function pgNominaDescuentos(){
   setP(h);
 }
 
+// ── Marcar descuento individual como aplicado ──
+async function marcarDescAplicado(id, nombreMens){
+  dialog(
+    'Marcar como aplicado',
+    `¿Confirmas que el descuento de ${nombreMens||'este mensajero'} ya fue aplicado en su liquidación?`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Sí, marcar aplicado', cl:'btn-p', fn:async()=>{
+        closeDlg();
+        const{error}=await sb.from('descuentos').update({aplicado:true}).eq('id',id);
+        if(error){toast('Error: '+error.message,'er');return;}
+        toast('Descuento marcado como aplicado ✓','ok');
+        pgNominaDescuentos();
+      }}
+    ]
+  );
+}
+
 // ── Nuevo descuento individual ──
 async function pgDescIndividual(){
   setBar('Descuento individual','Nómina');
   setP(loader());
 
-  const{data:mensajeros}=await sb.from('mensajeros').select('id,nombre_completo').eq('activo',true).order('nombre_completo');
+  // Incluir retirados recientes (últimos 60 días) para poder aplicarles descuentos de su última quincena
+  const hace60=new Date(Date.now()-60*24*3600*1000).toISOString().slice(0,10);
+  const[{data:activos},{data:retirados}]=await Promise.all([
+    sb.from('mensajeros').select('id,nombre_completo').eq('activo',true).order('nombre_completo'),
+    sb.from('mensajeros').select('id,nombre_completo,fecha_retiro').eq('activo',false)
+      .gte('fecha_retiro',hace60).order('nombre_completo'),
+  ]);
+
+  const optsActivos=(activos||[]).map(m=>`<option value="${m.id}">${esc(m.nombre_completo)}</option>`).join('');
+  const optsRetirados=(retirados||[]).map(m=>`<option value="${m.id}">${esc(m.nombre_completo)} (retirado ${fmtDate(m.fecha_retiro)})</option>`).join('');
 
   setP(`
     <div style="display:flex;flex-direction:column;gap:10px">
@@ -3454,7 +3485,8 @@ async function pgDescIndividual(){
         <label>Mensajero *</label>
         <select class="inp sel" id="diMens">
           <option value="">— Selecciona —</option>
-          ${(mensajeros||[]).map(m=>`<option value="${m.id}">${esc(m.nombre_completo)}</option>`).join('')}
+          ${optsActivos}
+          ${optsRetirados?`<optgroup label="── Retirados recientes ──" style="color:var(--tx3)">${optsRetirados}</optgroup>`:''}
         </select>
       </div>
       <div>
@@ -3493,7 +3525,6 @@ async function pgDescIndividual(){
     </div>
   `);
 
-  // Actualizar info de quincena al cambiar fecha
   document.getElementById('diFecha').addEventListener('change',function(){
     const q=calcQuincena(this.value);
     document.getElementById('diQuincenaInfo').innerHTML=`
@@ -3501,7 +3532,6 @@ async function pgDescIndividual(){
       <span style="color:var(--tx3)">${fmtRango(q.mes,q.año,q.quincena)}</span>
     `;
   });
-  // Trigger inicial
   document.getElementById('diFecha').dispatchEvent(new Event('change'));
 }
 
@@ -3539,6 +3569,65 @@ async function guardarDescIndividual(){
 }
 
 // ── Nuevo descuento grupal ──
+// ── Ver detalle descuento grupal ──
+function verDetalleGrupal(id){
+  S._grupalId=id;
+  go('nomina-desc-grupal-detalle');
+}
+
+async function pgDescGrupalDetalle(){
+  setBar('Detalle grupal','Descuentos');
+  setP(loader());
+
+  const id=S._grupalId;
+  if(!id){go('nomina-descuentos');return;}
+
+  const[{data:g},{data:partic}]=await Promise.all([
+    sb.from('descuentos_grupales')
+      .select('id,concepto,valor_total,fecha_evento,quincena,mes_quincena,año_quincena,cerrado,notas,created_at')
+      .eq('id',id).single(),
+    sb.from('descuentos_grupales_participantes')
+      .select('valor_asignado,mensajeros(nombre_completo),descuento_id')
+      .eq('descuento_grupal_id',id)
+      .order('valor_asignado',{ascending:false}),
+  ]);
+
+  if(!g){go('nomina-descuentos');return;}
+
+  const n=(partic||[]).length;
+  let h=`
+    <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:16px;margin-bottom:14px">
+      <div style="font-size:var(--fsl);font-weight:700;margin-bottom:6px">${esc(g.concepto)}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:var(--fss);color:var(--tx2)">
+        <div>📅 ${fmtDate(g.fecha_evento)}</div>
+        <div>📋 ${g.quincena} · ${MESES_ES[g.mes_quincena]} ${g.año_quincena}</div>
+        <div>👥 ${n} mensajeros</div>
+        <div><span class="b ${g.cerrado?'b-gy':'b-bl'}">${g.cerrado?'Cerrado':'Abierto'}</span></div>
+      </div>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--brd);display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:var(--fsb);color:var(--tx2)">Total distribuido</div>
+        <div style="font-family:var(--mo);font-weight:700;font-size:var(--fsl);color:var(--red)">${fmtCOP(g.valor_total)}</div>
+      </div>
+      ${g.notas?`<div style="margin-top:10px;padding:10px;background:rgba(251,191,36,.07);border:1px solid rgba(251,191,36,.2);border-radius:var(--r2);font-size:var(--fsb)">
+        <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:3px">📝 Observaciones</div>
+        <div style="color:var(--tx1)">${esc(g.notas)}</div>
+      </div>`:'<div style="margin-top:10px;font-size:var(--fss);color:var(--tx3);font-style:italic">Sin observaciones registradas</div>'}
+    </div>
+
+    <div class="sec-title">Reparto por mensajero (${n})</div>`;
+
+  (partic||[]).forEach(p=>{
+    h+=`<div class="card" style="cursor:default">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="font-size:var(--fsm)">${esc(p.mensajeros?.nombre_completo||'—')}</div>
+        <div style="font-family:var(--mo);font-weight:600;color:var(--red)">${fmtCOP(p.valor_asignado)}</div>
+      </div>
+    </div>`;
+  });
+
+  setP(h);
+}
+
 async function pgDescGrupal(){
   setBar('Descuento grupal','Nómina');
   setP(loader());
