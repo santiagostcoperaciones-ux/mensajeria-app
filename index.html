@@ -3705,19 +3705,23 @@ async function pgUsuarios(){
   const [{data:mensajeros},{data:prestamos},{data:enUsoRaw},{data:docsConteo}]=await Promise.all([
     sb.from('mensajeros').select('id,nombre_completo,num_documento,telefono,placa,correo,zona_principal,activo,usuario_xcargo,fecha_retiro,created_at').order('activo',{ascending:false}).order('nombre_completo'),
     sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa,activo,clave_enc').order('nombre'),
-    sb.from('mensajeros').select('nombre_completo,usuario_xcargo_prestado').eq('activo',true).not('usuario_xcargo_prestado','is',null),
+    sb.from('historial_usuarios_xcargo').select('usuario_xcargo,mensajero_id').is('fecha_hasta',null),
     sb.from('mensajero_documentos').select('mensajero_id,estado').in('estado',['subido','aprobado']),
   ]);
+
+  // Mapa mensajero_id → nombre (para resolver quién usa cada usuario)
+  const mensNombreMap={};
+  (mensajeros||[]).forEach(m=>mensNombreMap[m.id]=m.nombre_completo);
 
   // Mapa mensajero_id → cantidad de docs completos
   const docsMap={};
   (docsConteo||[]).forEach(d=>{docsMap[d.mensajero_id]=(docsMap[d.mensajero_id]||0)+1;});
   const TOTAL_DOCS=7;
 
-  // Mapa de correo prestado → nombre del mensajero que lo usa
+  // Mapa de correo xcargo → nombre del mensajero que lo usa HOY (según historial vigente)
   const enUsoMap={};
-  (enUsoRaw||[]).forEach(m=>{
-    if(m.usuario_xcargo_prestado) enUsoMap[m.usuario_xcargo_prestado.toLowerCase()]=m.nombre_completo;
+  (enUsoRaw||[]).forEach(h=>{
+    if(h.usuario_xcargo) enUsoMap[h.usuario_xcargo.toLowerCase()]=mensNombreMap[h.mensajero_id]||'—';
   });
 
   const activos=(mensajeros||[]).filter(m=>m.activo);
