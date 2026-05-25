@@ -4617,12 +4617,12 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
   // Cargar usuarios del pool de prestamo — solo los activos
   const{data:pool}=await sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa').eq('activo',true).order('nombre');
 
-  // Saber cuáles están en uso actualmente (tienen fecha_hasta NULL en historial de algún mensajero)
-  const{data:enUsoHist}=await sb.from('historial_usuarios_xcargo')
-    .select('usuario_xcargo').is('fecha_hasta',null);
-  const enUsoSet=new Set((enUsoHist||[]).map(h=>h.usuario_xcargo.toLowerCase()));
+  // Saber cuáles están en uso actualmente — igual que el listado de préstamo
+  const{data:enUsoRaw}=await sb.from('mensajeros')
+    .select('usuario_xcargo_prestado').eq('activo',true).not('usuario_xcargo_prestado','is',null);
+  const enUsoSet=new Set((enUsoRaw||[]).map(m=>m.usuario_xcargo_prestado.toLowerCase()));
 
-  // Si estamos editando, el usuario actual NO cuenta como "en uso" para sí mismo
+  // Si estamos editando, el usuario actual del registro NO cuenta como "en uso" para sí mismo
   if(isEdit&&datosEdit.usuario_xcargo) enUsoSet.delete(datosEdit.usuario_xcargo.toLowerCase());
 
   // Construir opciones: separar disponibles de en-uso
