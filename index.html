@@ -3043,13 +3043,12 @@ async function confirmarLiquidacion(){
           });
           if(detalles.length) await sb.from('liquidaciones_detalle').insert(detalles);
 
-          // 3. Aplicar descuentos pendientes
+          // 3. Aplicar descuentos pendientes y ligarlos a esta liquidación
           if(p.descuentosPend.length){
-            await sb.rpc('aplicar_descuentos_liquidacion',{
-              p_liquidacion_id:liq.id,
-              p_mensajero_id:p.mensDBId,
-              p_mes:p.mes, p_año:p.año, p_quincena:p.quincena
-            });
+            const ids=p.descuentosPend.map(d=>d.id);
+            await sb.from('descuentos')
+              .update({aplicado:true, liquidacion_aplicada_id:liq.id})
+              .in('id',ids);
           }
 
           // 3. Obtener datos del mensajero para el recibo
@@ -5187,11 +5186,48 @@ function generarReciboPDFBytes(p, mens, liqId){
   jsPDF.prototype.save=originalSave;
   return pdfOutput;
 }
+// ── Revertir descuento aplicado en un recibo ──
+async function revertirDescuento(descId, liqId, concepto){
+  dialog(
+    'Revertir descuento',
+    `¿Revertir "${concepto}"? Volverá a quedar pendiente y podrás corregirlo o reasignarlo a otro recibo.`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Sí, revertir', cl:'btn-d', fn:async()=>{
+        closeDlg();
+        try{
+          // Desmarcar el descuento y quitar la referencia a la liquidación
+          const{error:e1}=await sb.from('descuentos')
+            .update({aplicado:false, liquidacion_aplicada_id:null})
+            .eq('id',descId);
+          if(e1)throw e1;
+
+          // Recalcular y actualizar los totales de la liquidación
+          const{data:otrosDescs}=await sb.from('descuentos')
+            .select('valor').eq('liquidacion_aplicada_id',liqId);
+          const nuevoTotalDesc=(otrosDescs||[]).reduce((s,d)=>s+Number(d.valor||0),0);
+          const{data:liq}=await sb.from('liquidaciones').select('total_bruto').eq('id',liqId).single();
+          const nuevoNeto=Number(liq?.total_bruto||0)-nuevoTotalDesc;
+          await sb.from('liquidaciones').update({
+            total_descuentos: nuevoTotalDesc,
+            total_neto: nuevoNeto
+          }).eq('id',liqId);
+
+          toast('Descuento revertido — ya aparece como pendiente ✓','ok');
+          verReciboGuardado(liqId);
+        }catch(e){
+          toast('Error: '+e.message,'er');
+        }
+      }}
+    ]
+  );
+}
+
 async function verReciboGuardado(liqId){
   setBar('Recibo','Nómina');
   setP(loader());
 
-  const[{data:liq},{data:detalle},{data:descs}]=await Promise.all([
+  const[{data:liq},{data:detalle}]=await Promise.all([
     sb.from('liquidaciones')
       .select('id,mes,año,quincena,total_bruto,total_descuentos,total_neto,created_at,mensajeros(nombre_completo,num_documento,telefono,placa)')
       .eq('id',liqId).single(),
@@ -5199,14 +5235,28 @@ async function verReciboGuardado(liqId){
       .select('dia,fecha,entregas,valor')
       .eq('liquidacion_id',liqId)
       .order('dia'),
-    sb.from('descuentos')
-      .select('id,concepto,valor,numero_guia')
-      .eq('aplicado',true)
-      // Buscar descuentos que se aplicaron en esta liquidación
-      .eq('liquidacion_aplicada_id',liqId),
   ]);
 
   if(!liq){toast('Recibo no encontrado','er');go('nomina-home');return;}
+
+  // Buscar descuentos: primero por liquidacion_aplicada_id, si no por mensajero+quincena+aplicado
+  let descs=[];
+  {
+    const{data:d1}=await sb.from('descuentos')
+      .select('id,concepto,valor,numero_guia,aplicado')
+      .eq('liquidacion_aplicada_id',liqId);
+    if(d1?.length){
+      descs=d1;
+    } else {
+      // Fallback para recibos generados antes de la columna liquidacion_aplicada_id
+      const{data:d2}=await sb.from('descuentos')
+        .select('id,concepto,valor,numero_guia,aplicado')
+        .eq('mensajero_id',liq.mensajeros?.id||'')
+        .eq('mes_quincena',liq.mes).eq('año_quincena',liq.año).eq('quincena',liq.quincena)
+        .eq('aplicado',true);
+      descs=d2||[];
+    }
+  }
 
   const mens=liq.mensajeros||{};
   const docNum=mens.num_documento||'SIN-CC';
@@ -5214,7 +5264,6 @@ async function verReciboGuardado(liqId){
   const reciboNum=`CC${docNum}-${String(liq.mes).padStart(2,'0')}${liq.año}-${quincenaLabel}`;
 
   let h=`
-    <!-- Cabecera recibo -->
     <div style="background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:16px 14px;margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
         <div>
@@ -5229,15 +5278,12 @@ async function verReciboGuardado(liqId){
           <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">#${reciboNum}</div>
         </div>
       </div>
-
-      <!-- Totales -->
       <div class="stat-row" style="margin-bottom:0">
         <div class="stat"><div class="stat-n" style="color:var(--acc);font-size:clamp(13px,3.5vw,15px)">${fmtCOP(liq.total_bruto)}</div><div class="stat-l">Bruto</div></div>
         <div class="stat"><div class="stat-n" style="color:${liq.total_descuentos>0?'var(--red)':'var(--tx3)'};font-size:clamp(13px,3.5vw,15px)">${fmtCOP(liq.total_descuentos)}</div><div class="stat-l">Descuentos</div></div>
         <div class="stat" style="background:rgba(16,185,129,.08);border-radius:var(--r2)"><div class="stat-n" style="color:var(--grn);font-size:clamp(14px,4vw,17px)">${fmtCOP(liq.total_neto)}</div><div class="stat-l">Total neto</div></div>
       </div>
-    </div>
-  `;
+    </div>`;
 
   // Detalle por día
   if(detalle?.length){
@@ -5262,29 +5308,35 @@ async function verReciboGuardado(liqId){
     </div>`;
   } else {
     h+=`<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:var(--r2);padding:10px 12px;font-size:var(--fss);color:var(--amb);margin-bottom:12px">
-      ⚠️ Este recibo no tiene detalle día a día guardado (generado antes de la actualización). Necesitas volver a liquidar para guardarlo.
+      ⚠️ Este recibo no tiene detalle día a día guardado. Necesitas volver a liquidar para guardarlo.
     </div>`;
   }
 
-  // Descuentos aplicados
+  // Descuentos aplicados con opción de revertir/corregir
   if(descs?.length){
-    h+=`<div class="sec-title" style="color:var(--red)">Descuentos aplicados</div>`;
+    h+=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="sec-title" style="color:var(--red);margin-bottom:0">Descuentos aplicados (${descs.length})</div>
+    </div>`;
     descs.forEach(d=>{
-      h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:var(--r2);padding:8px 12px;margin-bottom:6px;font-size:var(--fss);display:flex;justify-content:space-between">
-        <span>${esc(d.concepto)}${d.numero_guia?' · '+esc(d.numero_guia):''}</span>
-        <span style="color:var(--red);font-family:var(--mo)">${fmtCOP(d.valor)}</span>
+      h+=`<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.15);border-radius:var(--r2);padding:8px 12px;margin-bottom:6px;font-size:var(--fss);display:flex;justify-content:space-between;align-items:center;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:500">${esc(d.concepto)}${d.numero_guia?` <span style="color:var(--tx3)">· ${esc(d.numero_guia)}</span>`:''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <span style="color:var(--red);font-family:var(--mo);font-weight:600">${fmtCOP(d.valor)}</span>
+          <button class="btn btn-o btn-s" style="font-size:10px;height:26px;padding:0 8px" onclick="revertirDescuento('${d.id}','${liqId}','${esc(d.concepto)}')">↩ Revertir</button>
+        </div>
       </div>`;
     });
   }
 
   // Botones de acción
-  h+=`<div style="display:flex;gap:8px;margin-top:14px">
-    <button class="btn btn-g" style="flex:2" onclick="descargarReciboGuardado('${liqId}')">⬇ Descargar PDF</button>
-    <button class="btn btn-o btn-s" style="flex:1" onclick="go('nomina-home')">← Volver</button>
+  h+=`<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+    <button class="btn btn-g" style="flex:2;min-width:140px" onclick="descargarReciboGuardado('${liqId}')">⬇ Descargar PDF</button>
+    <button class="btn btn-o btn-s" style="flex:1;min-width:100px" onclick="go('nomina-home')">← Volver</button>
   </div>`;
 
   setP(h);
-  // Guardar en S para poder generar el PDF
   S._reciboVer={liq,detalle:detalle||[],descs:descs||[]};
 }
 
