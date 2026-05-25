@@ -4122,13 +4122,11 @@ async function pgUsuarioNuevo(){
     .eq('activo',true)
     .order('nombre');
 
-  // Obtener correos ya asignados a mensajeros activos
-  const{data:enUso}=await sb.from('mensajeros')
-    .select('usuario_xcargo_prestado')
-    .eq('activo',true)
-    .not('usuario_xcargo_prestado','is',null);
+  // Obtener correos en uso HOY según historial (fecha_hasta NULL)
+  const{data:enUsoHist}=await sb.from('historial_usuarios_xcargo')
+    .select('usuario_xcargo').is('fecha_hasta',null);
 
-  const correosEnUso=new Set((enUso||[]).map(m=>m.usuario_xcargo_prestado?.toLowerCase()));
+  const correosEnUso=new Set((enUsoHist||[]).map(h=>h.usuario_xcargo?.toLowerCase()));
 
   // Si estamos editando, excluir el usuario actual del mensajero (no contarlo como "en uso")
   if(esEdicion&&datos.usuario_xcargo_prestado){
