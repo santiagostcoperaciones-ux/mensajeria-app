@@ -4128,9 +4128,15 @@ async function pgUsuarioNuevo(){
 
   const correosEnUso=new Set((enUsoHist||[]).map(h=>h.usuario_xcargo?.toLowerCase()));
 
-  // Si estamos editando, excluir el usuario actual del mensajero (no contarlo como "en uso")
-  if(esEdicion&&datos.usuario_xcargo_prestado){
-    correosEnUso.delete(datos.usuario_xcargo_prestado.toLowerCase());
+  // Si estamos editando, excluir el usuario vigente actual del mensajero (no contarlo como "en uso")
+  if(esEdicion){
+    const{data:vigH}=await sb.from('historial_usuarios_xcargo')
+      .select('usuario_xcargo').eq('mensajero_id',S._userEditId).is('fecha_hasta',null);
+    (vigH||[]).forEach(h=>correosEnUso.delete(h.usuario_xcargo?.toLowerCase()));
+    // Guardar el usuario vigente actual para pre-seleccionar en el selector
+    window._usuarioVigenteEdit=(vigH&&vigH.length)?vigH[vigH.length-1].usuario_xcargo:null;
+  } else {
+    window._usuarioVigenteEdit=null;
   }
 
   window._usuariosDisponibles=(disponibles||[]).filter(u=>
@@ -4222,11 +4228,11 @@ async function pgUsuarioNuevo(){
           <select class="inp sel" id="unUsuarioPrestado">
             <option value="">— Selecciona un usuario disponible —</option>
             ${(window._usuariosDisponibles||[]).map(u=>`
-              <option value="${esc(u.usuario_xcargo)}" ${(datos.usuario_xcargo_prestado||datos.usuario_xcargo)===u.usuario_xcargo?'selected':''}>
+              <option value="${esc(u.usuario_xcargo)}" ${(window._usuarioVigenteEdit||'')===u.usuario_xcargo?'selected':''}>
                 ${esc(u.nombre)} · ${esc(u.usuario_xcargo)}${u.placa?' · '+esc(u.placa):''}
               </option>`).join('')}
-            ${datos.usuario_xcargo_prestado&&!(window._usuariosDisponibles||[]).find(u=>u.usuario_xcargo===datos.usuario_xcargo_prestado)?
-              `<option value="${esc(datos.usuario_xcargo_prestado)}" selected>${esc(datos.usuario_xcargo_prestado)} (en uso actual)</option>`:''
+            ${window._usuarioVigenteEdit&&!(window._usuariosDisponibles||[]).find(u=>u.usuario_xcargo===window._usuarioVigenteEdit)?
+              `<option value="${esc(window._usuarioVigenteEdit)}" selected>${esc(window._usuarioVigenteEdit)} (en uso actual)</option>`:''
             }
           </select>
           <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">Solo se muestran usuarios disponibles del pool</div>
@@ -4295,14 +4301,47 @@ async function guardarUsuario(){
     if(esEdicion){
       const{error}=await sb.from('mensajeros').update(payload).eq('id',S._userEditId);
       if(error)throw error;
+
+      // Sincronizar historial: si cambió el usuario xcargo, cerrar el anterior y abrir el nuevo
+      const usuarioNuevo=usuarioXcargoPrest||usuarioXcargo||null;
+      if(usuarioNuevo){
+        // Cerrar vigentes anteriores que sean distintos al nuevo
+        const{data:vigentes}=await sb.from('historial_usuarios_xcargo')
+          .select('id,usuario_xcargo').eq('mensajero_id',S._userEditId).is('fecha_hasta',null);
+        const yaExiste=(vigentes||[]).some(v=>v.usuario_xcargo===usuarioNuevo);
+        if(!yaExiste){
+          const hoy=new Date().toISOString().slice(0,10);
+          const diaAnt=new Date(Date.now()-86400000).toISOString().slice(0,10);
+          if(vigentes?.length){
+            await sb.from('historial_usuarios_xcargo').update({fecha_hasta:diaAnt})
+              .eq('mensajero_id',S._userEditId).is('fecha_hasta',null);
+          }
+          await sb.from('historial_usuarios_xcargo').insert({
+            mensajero_id:S._userEditId, usuario_xcargo:usuarioNuevo,
+            tipo:usuarioPropio?'propio':'prestado', fecha_desde:hoy, fecha_hasta:null, notas:'Asignado desde formulario'
+          });
+        }
+      }
+
       toast('Usuario actualizado ✓','ok');
       S._userId=S._userEditId;
       S._userNombre=nombre;
       S._userEditId=null;
       go('usuario-detalle');
     } else {
-      const{error}=await sb.from('mensajeros').insert({...payload,activo:true});
+      const{data:nuevo,error}=await sb.from('mensajeros').insert({...payload,activo:true}).select('id').single();
       if(error)throw error;
+
+      // Insertar en historial si tiene usuario asignado
+      const usuarioNuevo=usuarioXcargoPrest||usuarioXcargo||null;
+      if(usuarioNuevo&&nuevo?.id){
+        const hoy=fechaIngreso||new Date().toISOString().slice(0,10);
+        await sb.from('historial_usuarios_xcargo').insert({
+          mensajero_id:nuevo.id, usuario_xcargo:usuarioNuevo,
+          tipo:usuarioPropio?'propio':'prestado', fecha_desde:hoy, fecha_hasta:null, notas:'Asignado al crear'
+        });
+      }
+
       toast('Usuario creado ✓','ok');
       go('usuarios');
     }
@@ -4314,46 +4353,41 @@ async function guardarUsuario(){
 async function toggleUsuarioActivo(id, nombre, activo){
   if(activo){
     // ── FLUJO DE RETIRO ──
-    // Obtener datos completos del mensajero
-    const{data:m}=await sb.from('mensajeros')
-      .select('usuario_propio,usuario_xcargo,usuario_xcargo_prestado')
-      .eq('id',id).single();
+    // Leer usuario(s) vigentes del historial
+    const{data:vigentes}=await sb.from('historial_usuarios_xcargo')
+      .select('usuario_xcargo,tipo').eq('mensajero_id',id).is('fecha_hasta',null);
 
-    const tienePropio = m?.usuario_propio && m?.usuario_xcargo;
-    const tienePrestado = m?.usuario_xcargo_prestado;
+    const usuarioPropio=(vigentes||[]).find(v=>v.tipo==='propio');
+    const usuarioPrestado=(vigentes||[]).find(v=>v.tipo==='prestado');
 
-    // Construir botones según el caso
     const botonesRetiro=[
       {l:'Cancelar', fn:closeDlg},
-      {l:'Registrar retiro', c:'btn-d', fn:async()=>{
+      {l:'Registrar retiro', cl:'btn-d', fn:async()=>{
         closeDlg();
 
-        if(tienePropio){
-          // Preguntar qué hacer con el usuario propio
+        if(usuarioPropio){
           dialog(
             'Usuario xcargo propio',
-            `${nombre} tiene usuario xcargo propio (${m.usuario_xcargo}).\n¿Qué deseas hacer con él?`, '',
+            `${nombre} tiene usuario propio (${usuarioPropio.usuario_xcargo}).\n¿Qué deseas hacer con él?`, '',
             [
               {l:'Cancelar', fn:closeDlg},
-              {l:'Guardar para usar después', c:'btn-o', fn:async()=>{
+              {l:'Guardar para usar después', cl:'btn-o', fn:async()=>{
                 closeDlg();
-                // Mover a usuarios_prestamo como disponible
                 await sb.from('usuarios_prestamo').insert({
-                  nombre: `[Disponible] ${nombre}`,
-                  usuario_xcargo: m.usuario_xcargo,
+                  nombre: nombre,
+                  usuario_xcargo: usuarioPropio.usuario_xcargo,
                   activo: true
                 });
-                await retirarMensajero(id, nombre, null);
+                await retirarMensajero(id, nombre, usuarioPrestado?.usuario_xcargo||null);
               }},
-              {l:'Inactivarlo', c:'btn-d', fn:async()=>{
+              {l:'Inactivarlo', cl:'btn-d', fn:async()=>{
                 closeDlg();
-                await retirarMensajero(id, nombre, null);
+                await retirarMensajero(id, nombre, usuarioPrestado?.usuario_xcargo||null);
               }}
             ]
           );
         } else {
-          // Sin usuario propio — solo retirar y liberar prestado
-          await retirarMensajero(id, nombre, tienePrestado ? m.usuario_xcargo_prestado : null);
+          await retirarMensajero(id, nombre, usuarioPrestado?.usuario_xcargo||null);
         }
       }}
     ];
@@ -4387,30 +4421,19 @@ async function toggleUsuarioActivo(id, nombre, activo){
 async function retirarMensajero(id, nombre, correoPrestadoALiberar){
   const hoy=new Date().toISOString().slice(0,10);
 
-  // Obtener datos actuales para preservar el historial
-  const{data:m}=await sb.from('mensajeros').select('usuario_xcargo_prestado,usuario_xcargo').eq('id',id).single();
-
-  // Al retirar: mover usuario_xcargo_prestado a usuario_xcargo_anterior
-  // para que el sistema siga reconociendo sus entregas históricas
-  const updateData={
+  // Marcar mensajero como retirado
+  await sb.from('mensajeros').update({
     activo: false,
     fecha_retiro: hoy,
-    usuario_xcargo_prestado: null,
-  };
+  }).eq('id',id);
 
-  // Si tenía usuario prestado, guardarlo como anterior con fecha de corte = hoy
-  if(m?.usuario_xcargo_prestado){
-    updateData.usuario_xcargo_anterior=m.usuario_xcargo_prestado;
-    updateData.fecha_cambio_usuario=hoy;
-  } else if(m?.usuario_xcargo){
-    // Si tenía usuario propio, también guardarlo como anterior
-    updateData.usuario_xcargo_anterior=m.usuario_xcargo;
-    updateData.fecha_cambio_usuario=hoy;
-  }
+  // Cerrar todos los registros vigentes del historial con fecha_hasta = hoy
+  await sb.from('historial_usuarios_xcargo')
+    .update({fecha_hasta: hoy})
+    .eq('mensajero_id', id)
+    .is('fecha_hasta', null);
 
-  await sb.from('mensajeros').update(updateData).eq('id',id);
-
-  // 2. Si tenía usuario prestado → marcarlo como disponible en el pool
+  // Si tenía usuario prestado → marcarlo como disponible en el pool
   if(correoPrestadoALiberar){
     await sb.from('usuarios_prestamo')
       .update({activo:true})
@@ -4520,32 +4543,75 @@ async function usuDoImport(){
 
     // Si ya existe por documento, hacer update en lugar de insert
     try{
-      let error;
+      let error; let mensajeroId=null;
       if(doc){
-        // Intentar update primero si tiene documento
         const{data:existe}=await sb.from('mensajeros').select('id').eq('num_documento',doc).maybeSingle();
         if(existe){
+          mensajeroId=existe.id;
           ({error}=await sb.from('mensajeros').update({
             nombre_completo:nombre,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,
+            usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,
+            clave_enc:claveEnc,activo:true
           }).eq('id',existe.id));
         } else {
-          ({error}=await sb.from('mensajeros').insert({
+          const{data:ins,error:e2}=await sb.from('mensajeros').insert({
             nombre_completo:nombre,num_documento:doc,telefono:tel,direccion:dir,correo,placa,
             fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
-          }));
+            usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,
+            usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,
+            clave_enc:claveEnc,activo:true
+          }).select('id').single();
+          error=e2; mensajeroId=ins?.id;
         }
       } else {
-        // Sin documento: insert directo
-        ({error}=await sb.from('mensajeros').insert({
+        const{data:ins,error:e2}=await sb.from('mensajeros').insert({
           nombre_completo:nombre,num_documento:null,telefono:tel,direccion:dir,correo,placa,
           fecha_ingreso:fechaIngreso,usuario_xcargo:usuarioXcargo,
-          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,clave_enc:claveEnc,activo:true
-        }));
+          usuario_xcargo_prestado:usuarioXcargoPrest,usuario_propio:usuarioPropio,
+          usuario_xcargo_anterior:usuarioAnterior,fecha_cambio_usuario:fechaCambio,
+          clave_enc:claveEnc,activo:true
+        }).select('id').single();
+        error=e2; mensajeroId=ins?.id;
       }
       if(error)throw error;
+
+      // Sincronizar historial_usuarios_xcargo
+      if(mensajeroId){
+        const usuActual=usuarioXcargoPrest||usuarioXcargo||null;
+        if(usuActual){
+          // Cerrar vigentes anteriores distintos al actual
+          await sb.from('historial_usuarios_xcargo')
+            .update({fecha_hasta: fechaCambio||fechaIngreso||new Date().toISOString().slice(0,10)})
+            .eq('mensajero_id',mensajeroId).is('fecha_hasta',null)
+            .neq('usuario_xcargo',usuActual);
+          // Insertar si no existe ya
+          const{data:yaEst}=await sb.from('historial_usuarios_xcargo')
+            .select('id').eq('mensajero_id',mensajeroId).eq('usuario_xcargo',usuActual).is('fecha_hasta',null).maybeSingle();
+          if(!yaEst){
+            await sb.from('historial_usuarios_xcargo').insert({
+              mensajero_id:mensajeroId, usuario_xcargo:usuActual,
+              tipo:usuarioPropio?'propio':'prestado',
+              fecha_desde:fechaCambio||fechaIngreso||new Date().toISOString().slice(0,10),
+              fecha_hasta:null, notas:'Importado masivamente'
+            });
+          }
+          // Si hay usuario anterior, también registrarlo con fecha de corte
+          if(usuarioAnterior&&usuarioAnterior!==usuActual&&fechaCambio){
+            const{data:yaAnt}=await sb.from('historial_usuarios_xcargo')
+              .select('id').eq('mensajero_id',mensajeroId).eq('usuario_xcargo',usuarioAnterior).maybeSingle();
+            if(!yaAnt){
+              await sb.from('historial_usuarios_xcargo').insert({
+                mensajero_id:mensajeroId, usuario_xcargo:usuarioAnterior,
+                tipo:'prestado',
+                fecha_desde:fechaIngreso||'2024-01-01',
+                fecha_hasta:fechaCambio, notas:'Usuario anterior importado masivamente'
+              });
+            }
+          }
+        }
+      }
       okMens++;
     }catch(e){
       errores.push(`${nombre}: ${e.message}`);
@@ -4619,10 +4685,10 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
   // Cargar usuarios del pool de prestamo — solo los activos
   const{data:pool}=await sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa').eq('activo',true).order('nombre');
 
-  // Saber cuáles están en uso actualmente — igual que el listado de préstamo
-  const{data:enUsoRaw}=await sb.from('mensajeros')
-    .select('usuario_xcargo_prestado').eq('activo',true).not('usuario_xcargo_prestado','is',null);
-  const enUsoSet=new Set((enUsoRaw||[]).map(m=>m.usuario_xcargo_prestado.toLowerCase()));
+  // Saber cuáles están en uso HOY según historial (fecha_hasta NULL)
+  const{data:enUsoRaw}=await sb.from('historial_usuarios_xcargo')
+    .select('usuario_xcargo').is('fecha_hasta',null);
+  const enUsoSet=new Set((enUsoRaw||[]).map(h=>h.usuario_xcargo?.toLowerCase()));
 
   // Si estamos editando, el usuario actual del registro NO cuenta como "en uso" para sí mismo
   if(isEdit&&datosEdit.usuario_xcargo) enUsoSet.delete(datosEdit.usuario_xcargo.toLowerCase());
