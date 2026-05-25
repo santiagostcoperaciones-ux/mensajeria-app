@@ -2611,22 +2611,45 @@ async function liqHandleFile(file){
 
     // Cargar mensajeros — incluir retirados para hacer match de usuarios prestados históricos
     const{data:mensDB}=await sb.from('mensajeros')
-      .select('id,nombre_completo,num_documento,correo,usuario_xcargo,usuario_xcargo_prestado,usuario_propio,usuario_xcargo_anterior,fecha_cambio_usuario,fecha_ingreso,activo,fecha_retiro');
+      .select('id,nombre_completo,num_documento,correo,activo,fecha_retiro');
 
-    const mensMapCorreo={};    // correo propio → mensajero
-    const mensMapPrestado={};  // usuario_xcargo_prestado → [{mensajero, fechaIngreso}] (puede haber varios)
-    const mensMapAnterior={};  // usuario_xcargo_anterior → {mensajero, fechaCorte}
-    const mensMapCedula={};    // num_documento → mensajero (fallback)
-    (mensDB||[]).forEach(m=>{
-      if(m.correo) mensMapCorreo[m.correo.trim().toLowerCase()]=m;
-      if(m.usuario_xcargo_prestado){
-        const key=m.usuario_xcargo_prestado.trim().toLowerCase();
-        if(!mensMapPrestado[key]) mensMapPrestado[key]=[];
-        mensMapPrestado[key].push({m, fechaIngreso: m.fecha_ingreso ? new Date(m.fecha_ingreso) : null});
-      }
-      if(m.usuario_xcargo_anterior) mensMapAnterior[m.usuario_xcargo_anterior.trim().toLowerCase()]={m, fechaCorte: m.fecha_cambio_usuario ? new Date(m.fecha_cambio_usuario) : null};
-      if(m.num_documento) mensMapCedula[String(m.num_documento).trim()]=m;
+    // Cargar historial completo de usuarios xcargo de todos los mensajeros
+    const{data:histDB}=await sb.from('historial_usuarios_xcargo')
+      .select('mensajero_id,usuario_xcargo,tipo,fecha_desde,fecha_hasta');
+
+    // Mapa de mensajeros por id para lookup rápido
+    const mensById={};
+    (mensDB||[]).forEach(m=>mensById[m.id]=m);
+
+    // Mapa de historial: correo → [{mensajero, desde, hasta}]
+    const mensMapHist={};
+    (histDB||[]).forEach(h=>{
+      const key=h.usuario_xcargo.trim().toLowerCase();
+      if(!mensMapHist[key]) mensMapHist[key]=[];
+      mensMapHist[key].push({
+        m: mensById[h.mensajero_id],
+        desde: new Date(h.fecha_desde),
+        hasta: h.fecha_hasta ? new Date(h.fecha_hasta) : new Date('2099-12-31')
+      });
     });
+
+    // Mapa por correo propio del mensajero (campo correo en mensajeros, no xcargo)
+    const mensMapCorreo={};
+    (mensDB||[]).forEach(m=>{ if(m.correo) mensMapCorreo[m.correo.trim().toLowerCase()]=m; });
+
+    // Mapa por cédula (fallback)
+    const mensMapCedula={};
+    (mensDB||[]).forEach(m=>{ if(m.num_documento) mensMapCedula[String(m.num_documento).trim()]=m; });
+
+    // Función helper: busca en historial el mensajero que tenía ese correo xcargo en esa fecha
+    function matchPorHistorial(correoOp, fechaEntrega){
+      const entradas=mensMapHist[correoOp]||[];
+      // Buscar la entrada cuyo rango incluye la fecha de entrega
+      let match=entradas.find(e=>e.m&&fechaEntrega>=e.desde&&fechaEntrega<=e.hasta);
+      // Si no hay match exacto, usar el que tenga fecha_hasta más cercana anterior (préstamo sin fecha_hasta registrada)
+      if(!match) match=entradas.find(e=>e.m&&fechaEntrega>=e.desde);
+      return match?.m||null;
+    }
 
     // Procesar filas — solo Entregado
     const df=baseData
@@ -2639,45 +2662,21 @@ async function liqHandleFile(file){
         else if(typeof fecha==='string'&&fecha.trim()){fecha=new Date(fecha.trim());}
         else fecha=null;
 
-        // Match 1: por correo operador propio
+        // Match 1: por historial xcargo (cubre propio, prestado, anterior, N cambios)
         const correoOp=String(r['Correo operador']||'').trim().toLowerCase();
-        let mensajeroDB=correoOp?mensMapCorreo[correoOp]:null;
-
-        // Match 2: por usuario xcargo prestado — verificar fecha_ingreso
-        // Si varios mensajeros usaron el mismo correo prestado, tomar el que estaba activo en esa fecha
-        if(!mensajeroDB&&correoOp&&mensMapPrestado[correoOp]){
-          const candidatos=mensMapPrestado[correoOp];
-          let fechaEntrega=r['Fecha y hora de salida'];
-          if(typeof fechaEntrega==='number'){const d=XLSX.SSF.parse_date_code(fechaEntrega);fechaEntrega=new Date(d.y,d.m-1,d.d);}
-          else if(!(fechaEntrega instanceof Date)) fechaEntrega=new Date(String(fechaEntrega));
-          // Buscar el candidato cuya fecha_ingreso es <= fecha de entrega
-          // Si solo hay uno sin fecha_ingreso, usarlo como fallback
-          let mejorMatch=null;
-          for(const c of candidatos){
-            if(!c.fechaIngreso){
-              if(!mejorMatch) mejorMatch=c.m; // fallback sin fecha
-            } else if(fechaEntrega>=c.fechaIngreso){
-              // Este mensajero ya estaba activo en esa fecha
-              // Si hay varios, tomar el que tenga fecha_ingreso más reciente (el más nuevo)
-              if(!mejorMatch||!mejorMatch.fecha_ingreso||(c.fechaIngreso>new Date(mejorMatch.fecha_ingreso))){
-                mejorMatch=c.m;
-              }
-            }
-          }
-          mensajeroDB=mejorMatch||null;
+        let mensajeroDB=null;
+        if(correoOp){
+          // Intentar match con fecha de entrega
+          let fechaMatch=r['Fecha y hora de salida'];
+          if(typeof fechaMatch==='number'){const d=XLSX.SSF.parse_date_code(fechaMatch);fechaMatch=new Date(d.y,d.m-1,d.d);}
+          else if(!(fechaMatch instanceof Date)) fechaMatch=new Date(String(fechaMatch));
+          mensajeroDB=matchPorHistorial(correoOp, fechaMatch);
         }
 
-        // Match 3: por usuario anterior — solo si la entrega es ANTES de la fecha de cambio
-        if(!mensajeroDB&&correoOp&&mensMapAnterior[correoOp]){
-          const{m, fechaCorte}=mensMapAnterior[correoOp];
-          // Si no hay fecha de corte o la entrega es anterior al corte → asignar al mensajero
-          let fechaEntrega=r['Fecha y hora de salida'];
-          if(typeof fechaEntrega==='number'){const d=XLSX.SSF.parse_date_code(fechaEntrega);fechaEntrega=new Date(d.y,d.m-1,d.d);}
-          else if(!(fechaEntrega instanceof Date)) fechaEntrega=new Date(String(fechaEntrega));
-          if(!fechaCorte||fechaEntrega<=fechaCorte) mensajeroDB=m;
-        }
+        // Match 2: por correo personal del mensajero (campo correo, no xcargo)
+        if(!mensajeroDB&&correoOp) mensajeroDB=mensMapCorreo[correoOp]||null;
 
-        // Match 4 (fallback): por cédula del campo Nombre operador
+        // Match 3 (fallback): por cédula del campo Nombre operador
         const operadorRaw=String(r['Nombre operador']||'').trim();
         if(!mensajeroDB){
           const cedula=operadorRaw.match(/^(\d+)/)?.[1]||null;
@@ -3870,6 +3869,12 @@ async function pgUsuarioDetalle(){
 
   if(!m){setP('<p class="empty">Usuario no encontrado</p>');return;}
 
+  // Historial de usuarios xcargo
+  const{data:histXcargo}=await sb.from('historial_usuarios_xcargo')
+    .select('id,usuario_xcargo,tipo,fecha_desde,fecha_hasta,notas')
+    .eq('mensajero_id',userId)
+    .order('fecha_desde',{ascending:true});
+
   // Liquidaciones recientes
   const{data:liqRecientes}=await sb.from('liquidaciones')
     .select('id,mes,año,quincena,total_neto,created_at')
@@ -3947,18 +3952,44 @@ async function pgUsuarioDetalle(){
         <div style="margin-top:4px"><div style="color:var(--tx3);font-size:10px">Número</div><div style="font-family:var(--mo);font-weight:600;letter-spacing:1px">${esc(m.num_cuenta||'—')}</div></div>
       </div>`:''}
 
-      ${m.usuario_xcargo?`<div style="margin-top:8px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
-        <div style="color:var(--tx3);margin-bottom:2px">Usuario xcargo propio</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-          <div style="font-family:var(--mo);color:var(--acc)">${esc(m.usuario_xcargo)}</div>
-          ${m.clave_enc?`<button class="btn btn-o" style="font-size:10px;padding:3px 10px;height:auto" onclick="verClaveXcargo('${userId}','${esc(m.nombre_completo)}')">Ver clave</button>`:'<span style="color:var(--tx3)">Sin clave guardada</span>'}
+      <!-- Historial de usuarios xcargo -->
+      <div style="margin-top:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-size:var(--fss);color:var(--tx3);font-weight:500">Usuarios xcargo</div>
+          <button class="btn btn-o btn-s" style="font-size:10px;height:28px;padding:0 10px" onclick="abrirFormHistXcargo('${userId}',null)">＋ Agregar</button>
         </div>
-      </div>`:''}
-
-      ${m.usuario_xcargo_prestado?`<div style="margin-top:8px;background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss)">
-        <div style="color:var(--tx3);margin-bottom:2px">Usuario xcargo prestado (actual)</div>
-        <div style="font-family:var(--mo);color:var(--amb)">${esc(m.usuario_xcargo_prestado)}</div>
-      </div>`:''}
+        ${(()=>{
+          if(!histXcargo||!histXcargo.length) return `<div style="font-size:var(--fss);color:var(--tx3);padding:8px 0">Sin usuarios registrados</div>`;
+          return histXcargo.map(h=>{
+            const isActive=!h.fecha_hasta;
+            const isProp=h.tipo==='propio';
+            const color=isProp?'var(--acc)':'var(--amb)';
+            const bg=isProp?'rgba(59,130,246,.07)':'rgba(245,158,11,.07)';
+            const border=isProp?'rgba(59,130,246,.2)':'rgba(245,158,11,.2)';
+            const label=isProp?'Propio':'Prestado';
+            const desde=h.fecha_desde?h.fecha_desde.slice(0,10):'—';
+            const hasta=h.fecha_hasta?h.fecha_hasta.slice(0,10):'hoy';
+            return `<div style="background:${bg};border:1px solid ${border};border-radius:var(--r2);padding:8px 10px;font-size:var(--fss);margin-bottom:6px;position:relative">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:3px">
+                    <span class="b ${isProp?'b-bl':'b-am'}" style="font-size:10px">${label}</span>
+                    ${isActive?'<span class="b b-gr" style="font-size:10px">✦ Vigente</span>':''}
+                  </div>
+                  <div style="font-family:var(--mo);color:${color};word-break:break-all">${esc(h.usuario_xcargo)}</div>
+                  <div style="color:var(--tx3);margin-top:3px">📅 ${desde} → ${hasta}</div>
+                  ${h.notas?`<div style="color:var(--tx2);margin-top:2px;font-style:italic">${esc(h.notas)}</div>`:''}
+                </div>
+                <div style="display:flex;gap:4px;flex-shrink:0">
+                  <button class="btn btn-o btn-s" style="font-size:10px;height:26px;padding:0 8px" onclick="abrirFormHistXcargo('${userId}','${h.id}')">✏️</button>
+                  <button class="btn btn-d btn-s" style="font-size:10px;height:26px;padding:0 8px" onclick="eliminarHistXcargo('${h.id}','${userId}')">🗑</button>
+                </div>
+              </div>
+            </div>`;
+          }).join('');
+        })()}
+        ${m.clave_enc?`<button class="btn btn-o btn-s" style="font-size:10px;margin-top:4px" onclick="verClaveXcargo('${userId}','${esc(m.nombre_completo)}')">🔑 Ver clave xcargo</button>`:''}
+      </div>
     </div>
   `;
 
@@ -4559,6 +4590,119 @@ async function usuDoImport(){
     ${(okMens>0||okPrest>0)?`<button class="btn btn-p btn-w" style="margin-top:10px" onclick="go('usuarios')">Ver usuarios →</button>`:''}
   `;
   if(okMens>0||okPrest>0)toast(`${okMens+okPrest} usuarios importados ✓`,'ok');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// HISTORIAL USUARIOS XCARGO
+// ══════════════════════════════════════════════════════════════════
+function abrirFormHistXcargo(mensajeroId, registroId){
+  // Buscar datos del registro si es edición
+  const isEdit=!!registroId;
+  let datosEdit={tipo:'prestado',usuario_xcargo:'',fecha_desde:'',fecha_hasta:'',notas:''};
+
+  if(isEdit){
+    // Buscar en el DOM actual el registro (ya cargado en histXcargo)
+    const card=document.querySelector(`[data-hid="${registroId}"]`);
+    if(card){
+      datosEdit={
+        tipo:card.dataset.tipo||'prestado',
+        usuario_xcargo:card.dataset.usuario||'',
+        fecha_desde:card.dataset.desde||'',
+        fecha_hasta:card.dataset.hasta||'',
+        notas:card.dataset.notas||''
+      };
+    }
+  }
+
+  dialog(
+    isEdit?'Editar usuario xcargo':'Agregar usuario xcargo',
+    '',
+    `<div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+      <div>
+        <label>Tipo</label>
+        <div style="display:flex;gap:8px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:var(--bg);border:1px solid var(--brd2);border-radius:var(--r2);padding:8px 10px" id="lblPrestado">
+            <input type="radio" name="tipoHist" value="prestado" ${(!isEdit||datosEdit.tipo==='prestado')?'checked':''} onchange="document.getElementById('lblPrestado').style.borderColor=this.checked?'var(--amb)':'var(--brd2)';document.getElementById('lblPropio').style.borderColor='var(--brd2)'">
+            🤝 Prestado
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;flex:1;background:var(--bg);border:1px solid var(--brd2);border-radius:var(--r2);padding:8px 10px" id="lblPropio">
+            <input type="radio" name="tipoHist" value="propio" ${(isEdit&&datosEdit.tipo==='propio')?'checked':''} onchange="document.getElementById('lblPropio').style.borderColor=this.checked?'var(--acc)':'var(--brd2)';document.getElementById('lblPrestado').style.borderColor='var(--brd2)'">
+            ✅ Propio
+          </label>
+        </div>
+      </div>
+      <div>
+        <label>Correo xcargo *</label>
+        <input class="inp" id="histUsuario" type="email" placeholder="correo@ejemplo.com" value="${esc(datosEdit.usuario_xcargo)}">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <label>Desde *</label>
+          <input class="inp" id="histDesde" type="date" value="${datosEdit.fecha_desde}">
+        </div>
+        <div>
+          <label>Hasta</label>
+          <input class="inp" id="histHasta" type="date" value="${datosEdit.fecha_hasta}" placeholder="Vacío = vigente">
+        </div>
+      </div>
+      <div>
+        <label>Notas</label>
+        <input class="inp" id="histNotas" placeholder="Ej: usuario de Alida mientras le creaban el propio" value="${esc(datosEdit.notas)}">
+      </div>
+    </div>`,
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:isEdit?'Actualizar':'Guardar', cl:'btn-p', fn:()=>guardarHistXcargo(mensajeroId, registroId)}
+    ]
+  );
+  // Destacar el tipo seleccionado al abrir
+  setTimeout(()=>{
+    if(datosEdit.tipo==='prestado') document.getElementById('lblPrestado').style.borderColor='var(--amb)';
+    else document.getElementById('lblPropio').style.borderColor='var(--acc)';
+  },50);
+}
+
+async function guardarHistXcargo(mensajeroId, registroId){
+  const usuario=document.getElementById('histUsuario')?.value?.trim()?.toLowerCase();
+  const desde=document.getElementById('histDesde')?.value;
+  const hasta=document.getElementById('histHasta')?.value||null;
+  const notas=document.getElementById('histNotas')?.value?.trim()||null;
+  const tipo=document.querySelector('input[name="tipoHist"]:checked')?.value||'prestado';
+
+  if(!usuario||!desde){toast('Correo y fecha desde son obligatorios','er');return;}
+  if(hasta&&hasta<desde){toast('La fecha hasta no puede ser anterior a la fecha desde','er');return;}
+
+  closeDlg();
+  try{
+    if(registroId){
+      const{error}=await sb.from('historial_usuarios_xcargo')
+        .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta,notas})
+        .eq('id',registroId);
+      if(error)throw error;
+      toast('Registro actualizado ✓','ok');
+    } else {
+      const{error}=await sb.from('historial_usuarios_xcargo')
+        .insert({mensajero_id:mensajeroId,usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta,notas});
+      if(error)throw error;
+      toast('Usuario agregado al historial ✓','ok');
+    }
+    go('usuario-detalle');
+  }catch(e){toast('Error: '+e.message,'er');}
+}
+
+async function eliminarHistXcargo(registroId, mensajeroId){
+  dialog('Eliminar registro','¿Eliminar este usuario del historial? Las liquidaciones ya generadas no se ven afectadas.','',
+    [
+      {l:'Cancelar',fn:closeDlg},
+      {l:'Eliminar',cl:'btn-d',fn:async()=>{
+        closeDlg();
+        const{error}=await sb.from('historial_usuarios_xcargo').delete().eq('id',registroId);
+        if(error){toast('Error: '+error.message,'er');return;}
+        toast('Registro eliminado ✓','ok');
+        go('usuario-detalle');
+      }}
+    ]
+  );
 }
 
 // ── Ver clave xcargo (solo admin con reautenticación) ──
