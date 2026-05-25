@@ -4614,11 +4614,31 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
     }
   }
 
-  // Cargar usuarios del pool de prestamo
+  // Cargar usuarios del pool de prestamo — solo los activos
   const{data:pool}=await sb.from('usuarios_prestamo').select('id,nombre,usuario_xcargo,placa').eq('activo',true).order('nombre');
-  const opcPool=(pool||[]).map(u=>
+
+  // Saber cuáles están en uso actualmente (tienen fecha_hasta NULL en historial de algún mensajero)
+  const{data:enUsoHist}=await sb.from('historial_usuarios_xcargo')
+    .select('usuario_xcargo').is('fecha_hasta',null);
+  const enUsoSet=new Set((enUsoHist||[]).map(h=>h.usuario_xcargo.toLowerCase()));
+
+  // Si estamos editando, el usuario actual NO cuenta como "en uso" para sí mismo
+  if(isEdit&&datosEdit.usuario_xcargo) enUsoSet.delete(datosEdit.usuario_xcargo.toLowerCase());
+
+  // Construir opciones: separar disponibles de en-uso
+  const poolDisp=(pool||[]).filter(u=>!enUsoSet.has(u.usuario_xcargo?.toLowerCase()));
+  const poolEnUso=(pool||[]).filter(u=>enUsoSet.has(u.usuario_xcargo?.toLowerCase()));
+
+  function nombreLimpio(n){ return n.replace(/^\[Disponible\]\s*/i,'').replace(/^\[En uso\]\s*/i,''); }
+
+  const opcDisp=poolDisp.map(u=>
     `<option value="${esc(u.usuario_xcargo)}" ${datosEdit.usuario_xcargo===u.usuario_xcargo?'selected':''}>
-      ${esc(u.nombre)}${u.placa?' · '+esc(u.placa):''} — ${esc(u.usuario_xcargo)}
+      ✅ ${esc(nombreLimpio(u.nombre))}${u.placa?' · '+esc(u.placa):''} — ${esc(u.usuario_xcargo)}
+    </option>`
+  ).join('');
+  const opcEnUso=poolEnUso.map(u=>
+    `<option value="${esc(u.usuario_xcargo)}" disabled style="color:var(--tx3)">
+      🔒 ${esc(nombreLimpio(u.nombre))}${u.placa?' · '+esc(u.placa):''} (en uso)
     </option>`
   ).join('');
 
@@ -4652,8 +4672,10 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
         <select class="inp sel" id="histUsuarioPrestado">
           <option value="">— Seleccionar usuario —</option>
           ${opcionActual}
-          ${opcPool}
+          ${opcDisp}
+          ${poolEnUso.length?`<optgroup label="── En uso ──" style="color:var(--tx3)">${opcEnUso}</optgroup>`:''}
         </select>
+        <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">✅ Disponibles · 🔒 En uso (no disponibles)</div>
       </div>
 
       <!-- Input libre para usuario propio -->
