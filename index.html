@@ -2227,22 +2227,47 @@ async function pgQuincenaDetalle(){
     <button class="btn btn-o btn-s" style="font-size:10px" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ Resumen</button>`;
   setP(loader());
 
-  const{data:mensajeros}=await sb.from('quincena_mensajeros')
-    .select('id,mensajero_id,nombre_display,correo_xcargo,total_entregas,total_bruto,en_bd')
-    .eq('quincena_id',quinId)
-    .order('total_bruto',{ascending:false});
+  const[{data:mensajeros},{data:quinInfo}]=await Promise.all([
+    sb.from('quincena_mensajeros')
+      .select('id,mensajero_id,nombre_display,correo_xcargo,total_entregas,total_bruto,en_bd')
+      .eq('quincena_id',quinId)
+      .order('total_bruto',{ascending:false}),
+    sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single(),
+  ]);
 
   if(!mensajeros?.length){setP('<p class="empty">Sin datos para esta quincena</p>');return;}
 
+  // Cargar descuentos pendientes (sin liquidacion_aplicada_id) de esta quincena
+  const mensIds=mensajeros.filter(m=>m.mensajero_id).map(m=>m.mensajero_id);
+  let descMap={};
+  if(mensIds.length&&quinInfo){
+    const qNorm=quinInfo.quincena==='Primera quincena'||quinInfo.quincena==='Q1'?'Q1':'Q2';
+    const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
+    const{data:descs}=await sb.from('descuentos')
+      .select('mensajero_id,valor')
+      .in('mensajero_id',mensIds)
+      .eq('mes_quincena',quinInfo.mes)
+      .eq('año_quincena',quinInfo.año)
+      .in('quincena',[qNorm,qAlt])
+      .is('liquidacion_aplicada_id',null);
+    (descs||[]).forEach(d=>{
+      descMap[d.mensajero_id]=(descMap[d.mensajero_id]||0)+Number(d.valor||0);
+    });
+  }
+
+  // Calcular totales con descuentos
   const totalBruto=mensajeros.reduce((s,m)=>s+Number(m.total_bruto||0),0);
+  const totalDescuentos=mensajeros.reduce((s,m)=>s+(descMap[m.mensajero_id]||0),0);
+  const totalNeto=totalBruto-totalDescuentos;
   const totalEntregas=mensajeros.reduce((s,m)=>s+Number(m.total_entregas||0),0);
 
   let h=`
     <div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:var(--r2);padding:12px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
       <div>
         <div style="font-size:var(--fss);color:var(--tx3)">Total a pagar</div>
-        <div style="font-weight:700;font-size:clamp(18px,5vw,22px);font-family:var(--mo);color:var(--grn)">${fmtCOP(totalBruto)}</div>
+        <div style="font-weight:700;font-size:clamp(18px,5vw,22px);font-family:var(--mo);color:var(--grn)">${fmtCOP(totalNeto)}</div>
         <div style="font-size:var(--fss);color:var(--tx3)">${mensajeros.length} mensajeros · ${totalEntregas.toLocaleString()} entregas</div>
+        ${totalDescuentos>0?`<div style="font-size:var(--fss);color:var(--red);margin-top:2px">Bruto: ${fmtCOP(totalBruto)} · Desc: ${fmtCOP(totalDescuentos)}</div>`:''}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
         <button class="btn btn-p btn-s" onclick="descargarResumenQuincena('${quinId}','${esc(quinNombre)}')">⬇ PDF Contabilidad</button>
@@ -2253,7 +2278,8 @@ async function pgQuincenaDetalle(){
   `;
 
   mensajeros.forEach(m=>{
-    const liqBtn=m.mensajero_id?`<button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto;flex-shrink:0" onclick="event.stopPropagation();S._quinMensId='${m.id}';S._quinMensNombre='${esc(m.nombre_display)}';go('quincena-mensajero-recibo')">Ver recibo</button>`:'';
+    const desc=descMap[m.mensajero_id]||0;
+    const neto=Number(m.total_bruto||0)-desc;
     h+=`<div class="card" onclick="S._quinMensId='${m.id}';S._quinMensNombre='${esc(m.nombre_display)}';go('quincena-mensajero-recibo')" style="cursor:pointer">
       <div class="card-row">
         <div class="ci" style="background:rgba(139,92,246,.12);color:var(--pur);font-weight:700;font-size:13px;font-family:var(--mo)">
@@ -2267,7 +2293,11 @@ async function pgQuincenaDetalle(){
           <div style="font-size:var(--fss);color:var(--tx3)">${m.total_entregas} entregas</div>
         </div>
         <div style="text-align:right;flex-shrink:0">
-          <div style="font-weight:700;color:var(--grn);font-family:var(--mo)">${fmtCOP(m.total_bruto)}</div>
+          ${desc>0?`
+            <div style="font-size:var(--fss);color:var(--tx3);text-decoration:line-through">${fmtCOP(m.total_bruto)}</div>
+            <div style="font-size:var(--fss);color:var(--red)">-${fmtCOP(desc)}</div>
+            <div style="font-weight:700;color:${neto<0?'var(--red)':'var(--grn)'};font-family:var(--mo)">${fmtCOP(neto)}</div>
+          `:`<div style="font-weight:700;color:var(--grn);font-family:var(--mo)">${fmtCOP(m.total_bruto)}</div>`}
           ${m.mensajero_id?`<div style="font-size:var(--fss);color:var(--acc);margin-top:2px">Ver recibo →</div>`:''}
         </div>
       </div>
