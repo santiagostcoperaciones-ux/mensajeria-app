@@ -2170,7 +2170,7 @@ async function pgNominaHome(){
 
   const[{data:quincenas},{count:totalDescPend}]=await Promise.all([
     sb.from('quincenas').select('id,mes,año,quincena,nombre,archivo_nombre,total_entregas,total_mensajeros,created_at').order('año',{ascending:false}).order('mes',{ascending:false}).order('quincena',{ascending:false}),
-    sb.from('descuentos').select('id',{count:'exact',head:true}).eq('aplicado',false),
+    sb.from('descuentos').select('id',{count:'exact',head:true}).is('liquidacion_aplicada_id',null),
   ]);
 
   let h=`
@@ -2297,7 +2297,7 @@ async function pgQuinMensajeroRecibo(){
           .select('id,concepto,valor,numero_guia,tipo')
           .eq('mensajero_id',ref.mensajero_id)
           .eq('mes_quincena',qInfo.mes).eq('año_quincena',qInfo.año).eq('quincena',qInfo.quincena)
-          .eq('aplicado',false);
+          .is('liquidacion_aplicada_id',null);
       }),
   ]);
 
@@ -2408,13 +2408,15 @@ async function descargarResumenQuincena(quinId, quinNombre){
   if(quinData){
     const mensIds=mensajeros.filter(m=>m.mensajero_id).map(m=>m.mensajero_id);
     if(mensIds.length){
+      const qNorm=quinData.quincena==='Primera quincena'||quinData.quincena==='Q1'?'Q1':'Q2';
+      const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
       const{data:descs}=await sb.from('descuentos')
         .select('mensajero_id,valor')
         .in('mensajero_id',mensIds)
         .eq('mes_quincena',quinData.mes)
         .eq('año_quincena',quinData.año)
-        .eq('quincena',quinData.quincena)
-        .eq('aplicado',false);
+        .in('quincena',[qNorm,qAlt])
+        .is('liquidacion_aplicada_id',null);
       (descs||[]).forEach(d=>{
         descMap[d.mensajero_id]=(descMap[d.mensajero_id]||0)+Number(d.valor||0);
       });
@@ -2890,13 +2892,17 @@ async function liqPreview(){
   const totalBruto=resumen.reduce((s,r)=>s+r.valor,0);
 
   // Descuentos pendientes si hay match en BD
+  // Normalizar quincena a Q1/Q2 para hacer match correcto
   let descuentosPend=[];
   if(mensDBId){
+    const qNorm=quincena==='Primera quincena'||quincena==='Q1'?'Q1':'Q2';
+    const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
     const{data:descs}=await sb.from('descuentos')
-      .select('id,concepto,valor,tipo,numero_guia,fecha_evento')
+      .select('id,concepto,valor,tipo,numero_guia,fecha_evento,aplicado,liquidacion_aplicada_id')
       .eq('mensajero_id',mensDBId)
-      .eq('mes_quincena',mes).eq('año_quincena',año).eq('quincena',quincena)
-      .eq('aplicado',false);
+      .eq('mes_quincena',mes).eq('año_quincena',año)
+      .in('quincena',[qNorm,qAlt])
+      .is('liquidacion_aplicada_id',null);
     descuentosPend=descs||[];
   }
   const totalDescuentos=descuentosPend.reduce((s,d)=>s+d.valor,0);
@@ -4039,7 +4045,7 @@ async function pgUsuarioDetalle(){
   const{data:descPend}=await sb.from('descuentos')
     .select('id,concepto,valor,mes_quincena,año_quincena,quincena')
     .eq('mensajero_id',userId)
-    .eq('aplicado',false)
+    .is('liquidacion_aplicada_id',null)
     .order('created_at',{ascending:false}).limit(5);
 
   document.getElementById('barRight').innerHTML=`
@@ -5101,7 +5107,7 @@ async function descargarTodosRecibos(quinId, quinNombre){
     .select('mensajero_id,id,concepto,valor,numero_guia')
     .in('mensajero_id',mensIds)
     .eq('mes_quincena',quinData.mes).eq('año_quincena',quinData.año)
-    .eq('quincena',quinData.quincena).eq('aplicado',false);
+    .eq('quincena',quinData.quincena).is('liquidacion_aplicada_id',null);
 
   const descPorMens={};
   (todosDescs||[]).forEach(d=>{
