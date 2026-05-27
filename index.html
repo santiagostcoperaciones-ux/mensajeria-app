@@ -3874,6 +3874,116 @@ async function guardarDescGrupal(){
 // ══════════════════════════════════════════════════════════════════
 
 // ── Listado de usuarios ──
+// ── Exportar PDF usuarios préstamo ──
+function exportarUsuariosPrestamoPDF(){
+  const {prestamos, enUsoMap} = window._exportPrestamos || {};
+  if(!prestamos?.length){toast('Sin usuarios de préstamo para exportar','er');return;}
+
+  const disponibles = prestamos.filter(p=>!enUsoMap[p.usuario_xcargo?.toLowerCase()]);
+  const enUso       = prestamos.filter(p=> enUsoMap[p.usuario_xcargo?.toLowerCase()]);
+  const hoy = new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
+
+  const filaDisp = disponibles.map((p,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${p.nombre||'—'}</td>
+      <td>${p.usuario_xcargo||'—'}</td>
+      <td>${p.placa||'—'}</td>
+      <td style="color:#16a34a;font-weight:600">Disponible</td>
+    </tr>`).join('');
+
+  const filaEnUso = enUso.map((p,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${p.nombre||'—'}</td>
+      <td>${p.usuario_xcargo||'—'}</td>
+      <td>${p.placa||'—'}</td>
+      <td style="color:#d97706;font-weight:600">${enUsoMap[p.usuario_xcargo?.toLowerCase()]||'En uso'}</td>
+    </tr>`).join('');
+
+  const html=`<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Usuarios xcargo préstamo — STC Express</title>
+<style>
+  @page { size: A4; margin: 20mm 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #111; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 2px solid #1e3a5f; }
+  .header h1 { font-size: 18px; color: #1e3a5f; }
+  .header p { font-size: 10px; color: #666; margin-top: 3px; }
+  .fecha { text-align: right; font-size: 10px; color: #666; }
+  .seccion { margin-bottom: 20px; }
+  .seccion h2 { font-size: 13px; padding: 6px 10px; margin-bottom: 0; border-radius: 4px 4px 0 0; }
+  .disp h2  { background: #dcfce7; color: #166534; }
+  .enuso h2 { background: #fef3c7; color: #92400e; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f1f5f9; padding: 6px 8px; text-align: left; font-size: 10px; color: #475569; border: 1px solid #e2e8f0; }
+  td { padding: 6px 8px; border: 1px solid #e2e8f0; vertical-align: middle; }
+  tr:nth-child(even) td { background: #f8fafc; }
+  .resumen { display: flex; gap: 16px; margin-bottom: 18px; }
+  .res-card { flex: 1; border-radius: 6px; padding: 10px 14px; }
+  .res-card.total  { background: #eff6ff; border: 1px solid #bfdbfe; }
+  .res-card.disp   { background: #dcfce7; border: 1px solid #bbf7d0; }
+  .res-card.enuso  { background: #fef3c7; border: 1px solid #fde68a; }
+  .res-card .num   { font-size: 22px; font-weight: 700; }
+  .res-card .lbl   { font-size: 10px; color: #555; margin-top: 2px; }
+  .footer { margin-top: 24px; padding-top: 10px; border-top: 1px solid #e2e8f0; font-size: 9px; color: #999; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <h1>STC Express — Usuarios xcargo préstamo</h1>
+      <p>Sistema de Mensajería · Reporte de disponibilidad</p>
+    </div>
+    <div class="fecha">Fecha: ${hoy}</div>
+  </div>
+
+  <div class="resumen">
+    <div class="res-card total">
+      <div class="num">${prestamos.length}</div>
+      <div class="lbl">Total usuarios</div>
+    </div>
+    <div class="res-card disp">
+      <div class="num" style="color:#16a34a">${disponibles.length}</div>
+      <div class="lbl">Disponibles</div>
+    </div>
+    <div class="res-card enuso">
+      <div class="num" style="color:#d97706">${enUso.length}</div>
+      <div class="lbl">En uso</div>
+    </div>
+  </div>
+
+  ${disponibles.length?`
+  <div class="seccion disp">
+    <h2>✓ Disponibles (${disponibles.length})</h2>
+    <table>
+      <thead><tr><th>#</th><th>Nombre</th><th>Correo xcargo</th><th>Placa</th><th>Estado</th></tr></thead>
+      <tbody>${filaDisp}</tbody>
+    </table>
+  </div>`:''}
+
+  ${enUso.length?`
+  <div class="seccion enuso">
+    <h2>En uso (${enUso.length})</h2>
+    <table>
+      <thead><tr><th>#</th><th>Nombre</th><th>Correo xcargo</th><th>Placa</th><th>Asignado a</th></tr></thead>
+      <tbody>${filaEnUso}</tbody>
+    </table>
+  </div>`:''}
+
+  <div class="footer">Generado por STC Express · ${hoy} · Confidencial</div>
+</body>
+</html>`;
+
+  const win = window.open('','_blank','width=900,height=700');
+  win.document.write(html);
+  win.document.close();
+  win.onload=()=>{ win.focus(); win.print(); };
+}
+
 async function pgUsuarios(){
   if(!S.user){go('login',false);return;}
   if(S.profile?.rol!=='admin'){go('zona-menu',false);return;}
@@ -3910,11 +4020,15 @@ async function pgUsuarios(){
   const activos=(mensajeros||[]).filter(m=>m.activo);
   const retirados=(mensajeros||[]).filter(m=>!m.activo);
 
+  // Guardar datos en window para el export PDF
+  window._exportPrestamos={prestamos:prestamos||[], enUsoMap};
+
   // Búsqueda en cliente
   const busqId='uBusq_'+Date.now();
   let h=`
     <div style="display:flex;gap:8px;margin-bottom:12px">
       <input class="inp" id="${busqId}" placeholder="Buscar por nombre o documento..." oninput="filtrarUsuarios(this.value)" style="flex:1">
+      <button class="btn btn-o btn-s" style="flex-shrink:0;white-space:nowrap" onclick="exportarUsuariosPrestamoPDF()">📄 PDF</button>
     </div>
     <div class="seg" style="margin-bottom:12px">
       <button class="seg-btn on" id="tabActivos" onclick="switchTabUsuarios('activos')">Activos (${activos.length})</button>
