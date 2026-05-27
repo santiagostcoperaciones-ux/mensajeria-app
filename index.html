@@ -4318,8 +4318,10 @@ async function pgUsuarioNuevo(){
     (vigH||[]).forEach(h=>correosEnUso.delete(h.usuario_xcargo?.toLowerCase()));
     // Guardar el usuario vigente actual para pre-seleccionar en el selector
     window._usuarioVigenteEdit=(vigH&&vigH.length)?vigH[vigH.length-1].usuario_xcargo:null;
+    window._usuarioVigenteEditTipo=(vigH&&vigH.length)?vigH[vigH.length-1].tipo:'prestado';
   } else {
     window._usuarioVigenteEdit=null;
+    window._usuarioVigenteEditTipo='prestado';
   }
 
   window._usuariosDisponibles=(disponibles||[]).filter(u=>
@@ -4398,15 +4400,17 @@ async function pgUsuarioNuevo(){
       <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.15);border-radius:var(--r2);padding:12px 14px">
         <div style="margin-bottom:8px"><label>¿Tiene usuario xcargo propio?</label>
           <select class="inp sel" id="unPropio" onchange="toggleCampoXcargo()">
-            <option value="true" ${datos.usuario_propio!==false?'selected':''}>Sí — tiene usuario propio</option>
-            <option value="false" ${datos.usuario_propio===false?'selected':''}>No — usa usuario prestado</option>
+            <option value="true" ${window._usuarioVigenteEditTipo==='propio'?'selected':''}>Sí — tiene usuario propio</option>
+            <option value="false" ${window._usuarioVigenteEditTipo!=='propio'?'selected':''}>No — usa usuario prestado</option>
           </select>
         </div>
-        <div id="campoXcargoPropio" style="${datos.usuario_propio!==false?'':'display:none'}">
+        <div id="campoXcargoPropio" style="${window._usuarioVigenteEditTipo==='propio'?'':'display:none'}">
           <label>Correo usuario xcargo propio</label>
-          <input class="inp" id="unUsuarioPropio" placeholder="correo@gmail.com" value="${esc(datos.usuario_xcargo||'')}">
+          <input class="inp" id="unUsuarioPropio" placeholder="correo@gmail.com" value="${esc(window._usuarioVigenteEditTipo==='propio'?window._usuarioVigenteEdit||'':'')}">
+          <label style="margin-top:8px;display:block">Clave xcargo <span style="color:var(--tx3);font-weight:400">(dejar vacío para no cambiar)</span></label>
+          <input class="inp" id="unClavePropio" type="password" placeholder="••••••••" autocomplete="new-password">
         </div>
-        <div id="campoXcargoPrestado" style="${datos.usuario_propio===false?'':'display:none'}">
+        <div id="campoXcargoPrestado" style="${window._usuarioVigenteEditTipo!=='propio'?'':'display:none'}">
           <label>Usuario xcargo prestado</label>
           <select class="inp sel" id="unUsuarioPrestado">
             <option value="">— Selecciona un usuario disponible —</option>
@@ -4414,7 +4418,7 @@ async function pgUsuarioNuevo(){
               <option value="${esc(u.usuario_xcargo)}" ${(window._usuarioVigenteEdit||'')===u.usuario_xcargo?'selected':''}>
                 ${esc(u.nombre)} · ${esc(u.usuario_xcargo)}${u.placa?' · '+esc(u.placa):''}
               </option>`).join('')}
-            ${window._usuarioVigenteEdit&&!(window._usuariosDisponibles||[]).find(u=>u.usuario_xcargo===window._usuarioVigenteEdit)?
+            ${window._usuarioVigenteEdit&&window._usuarioVigenteEditTipo!=='propio'&&!(window._usuariosDisponibles||[]).find(u=>u.usuario_xcargo===window._usuarioVigenteEdit)?
               `<option value="${esc(window._usuarioVigenteEdit)}" selected>${esc(window._usuarioVigenteEdit)} (en uso actual)</option>`:''
             }
           </select>
@@ -4454,10 +4458,10 @@ async function guardarUsuario(){
   const refNombre=document.getElementById('unRefNombre')?.value?.trim()||null;
   const refCelular=document.getElementById('unRefCelular')?.value?.trim()||null;
   const usuarioPropio=document.getElementById('unPropio')?.value==='true';
-  // Si tiene usuario propio → guardar en usuario_xcargo y limpiar prestado
-  // Si usa prestado → guardar en usuario_xcargo_prestado y limpiar propio
   const usuarioXcargo       = usuarioPropio ? (document.getElementById('unUsuarioPropio')?.value?.trim().toLowerCase()||null) : null;
   const usuarioXcargoPrest  = usuarioPropio ? null : (document.getElementById('unUsuarioPrestado')?.value?.trim().toLowerCase()||null);
+  const claveRaw            = document.getElementById('unClavePropio')?.value?.trim()||null;
+  const claveEnc            = claveRaw ? await encryptText(claveRaw) : undefined; // undefined = no tocar la clave existente
 
   if(!nombre){toast('El nombre es obligatorio','er');return;}
 
@@ -4478,6 +4482,7 @@ async function guardarUsuario(){
     tipo_cuenta:tipoCuenta||null,
     referencia_nombre:refNombre,
     referencia_celular:refCelular,
+    ...(claveEnc!==undefined?{clave_enc:claveEnc}:{}), // solo actualizar si se ingresó nueva clave
   };
 
   try{
