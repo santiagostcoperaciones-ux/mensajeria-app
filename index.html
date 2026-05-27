@@ -4058,6 +4058,7 @@ async function pgUsuarioDetalle(){
     .eq('id',userId).single();
 
   if(!m){setP('<p class="empty">Usuario no encontrado</p>');return;}
+  S._userCorreo=m.correo||null; // guardar para uso en formulario historial xcargo
 
   // Historial de usuarios xcargo
   const{data:histXcargo}=await sb.from('historial_usuarios_xcargo')
@@ -4934,10 +4935,15 @@ async function abrirFormHistXcargo(mensajeroId, registroId){
         <div style="font-size:var(--fss);color:var(--tx3);margin-top:4px">✅ Disponibles · 🔒 En uso (no disponibles)</div>
       </div>
 
-      <!-- Input libre para usuario propio -->
+      <!-- Usuario propio: usa el correo del mensajero, solo pide clave -->
       <div id="secUsuarioPropio" style="display:${(isEdit&&datosEdit.tipo==='propio')?'block':'none'}">
-        <label>Correo xcargo propio *</label>
-        <input class="inp" id="histUsuarioPropio" type="email" placeholder="correo@ejemplo.com" value="${(isEdit&&datosEdit.tipo==='propio')?esc(datosEdit.usuario_xcargo):''}">
+        <div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:var(--r2);padding:10px 12px;margin-bottom:8px">
+          <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:2px">Usuario xcargo propio</div>
+          <div style="font-family:var(--mo);color:var(--acc);font-weight:600">${S._userCorreo||'(correo del mensajero)'}</div>
+          <div style="font-size:var(--fss);color:var(--tx3);margin-top:3px">Se usa el correo registrado del mensajero</div>
+        </div>
+        <label>${isEdit?'Nueva clave xcargo':'Clave xcargo *'} <span style="color:var(--tx3);font-weight:400">${isEdit?'(dejar vacío para no cambiar)':''}</span></label>
+        <input class="inp" id="histClavePropio" type="password" placeholder="••••••••" autocomplete="new-password">
       </div>
 
       <div>
@@ -4968,14 +4974,18 @@ async function guardarHistXcargo(mensajeroId, registroId){
   const tipo=document.querySelector('input[name="tipoHist"]:checked')?.value||'prestado';
   const usuario=(tipo==='prestado'
     ? document.getElementById('histUsuarioPrestado')?.value
-    : document.getElementById('histUsuarioPropio')?.value
+    : (S._userCorreo||'')  // usuario propio = correo del mensajero
   )?.trim()?.toLowerCase();
   const desde=document.getElementById('histDesde')?.value;
   const hasta=document.getElementById('histHasta')?.value||null;
   const notas=document.getElementById('histNotas')?.value?.trim()||null;
+  const claveRaw=tipo==='propio'?(document.getElementById('histClavePropio')?.value?.trim()||null):null;
 
-  if(!usuario||!desde){toast('Usuario y fecha desde son obligatorios','er');return;}
+  if(!usuario||!desde){toast(tipo==='propio'&&!S._userCorreo?'El mensajero no tiene correo registrado':'Usuario y fecha desde son obligatorios','er');return;}
   if(hasta&&hasta<desde){toast('La fecha hasta no puede ser anterior a la fecha desde','er');return;}
+  if(tipo==='propio'&&!registroId&&!claveRaw){toast('La clave xcargo es obligatoria para usuario propio','er');return;}
+
+  const claveEnc=claveRaw?await encryptText(claveRaw):null;
 
   closeDlg();
   try{
@@ -4984,27 +4994,28 @@ async function guardarHistXcargo(mensajeroId, registroId){
         .update({usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:hasta||null,notas})
         .eq('id',registroId);
       if(error)throw error;
+      if(claveEnc){
+        await sb.from('mensajeros').update({clave_enc:claveEnc,usuario_xcargo:usuario}).eq('id',mensajeroId);
+      }
       toast('Registro actualizado ✓','ok');
     } else {
-      // Al agregar nuevo: cerrar automáticamente el registro vigente anterior (fecha_hasta = día antes del nuevo desde)
       const desdeDt=new Date(desde+'T12:00:00');
       const diaAnterior=new Date(desdeDt);
       diaAnterior.setDate(diaAnterior.getDate()-1);
       const fechaCorte=diaAnterior.toISOString().slice(0,10);
-
-      // Buscar registros vigentes del mismo mensajero (fecha_hasta IS NULL)
       const{data:vigentes}=await sb.from('historial_usuarios_xcargo')
         .select('id').eq('mensajero_id',mensajeroId).is('fecha_hasta',null);
-
       if(vigentes?.length){
         await sb.from('historial_usuarios_xcargo')
           .update({fecha_hasta:fechaCorte})
           .eq('mensajero_id',mensajeroId).is('fecha_hasta',null);
       }
-
       const{error}=await sb.from('historial_usuarios_xcargo')
         .insert({mensajero_id:mensajeroId,usuario_xcargo:usuario,tipo,fecha_desde:desde,fecha_hasta:null,notas});
       if(error)throw error;
+      if(tipo==='propio'&&claveEnc){
+        await sb.from('mensajeros').update({clave_enc:claveEnc,usuario_xcargo:usuario,usuario_propio:true}).eq('id',mensajeroId);
+      }
       toast('Usuario agregado y anterior cerrado automáticamente ✓','ok');
     }
     go('usuario-detalle');
