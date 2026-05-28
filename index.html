@@ -4084,8 +4084,11 @@ async function pgUsuarios(){
             ${enUso?`<div style="font-size:var(--fss);color:var(--amb);margin-top:2px">→ ${esc(asignadoA)}</div>`:''}
           </div>
           <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">
-            <span class="b ${enUso?'b-am':'b-gr'}">${enUso?'En uso':'Disponible'}</span>
-            <button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">${p.clave_enc?'Ver clave':'🔑 Sin clave'}</button>
+            <span class="b ${enUso?'b-am':p.activo?'b-gr':'b-gy'}">${enUso?'En uso':p.activo?'Disponible':'Inactivo'}</span>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto" onclick="verClavePrestamo('${p.id}','${esc(p.nombre)}')">${p.clave_enc?'Ver clave':'🔑 Sin clave'}</button>
+              <button class="btn btn-o" style="font-size:10px;padding:3px 8px;height:auto;${p.activo?'':'background:rgba(100,116,139,.15)'}" onclick="toggleUsuarioPrestamo('${p.id}','${esc(p.nombre)}',${p.activo},${enUso})" title="${p.activo?'Deshabilitar':'Habilitar'}">${p.activo?'🔒 Deshabilitar':'✅ Habilitar'}</button>
+            </div>
           </div>
         </div>
       </div>`;
@@ -5184,6 +5187,33 @@ async function verClaveXcargo(mensajeroId, nombreMensajero){
   aEl.appendChild(btnCancel);aEl.appendChild(btnOk);
   dlg.classList.add('open');
   setTimeout(()=>document.getElementById('dlgReauthPwd')?.focus(),150);
+}
+
+async function toggleUsuarioPrestamo(id, nombre, activo, enUso){
+  if(!activo){
+    // Habilitar — sin preguntar
+    const{error}=await sb.from('usuarios_prestamo').update({activo:true}).eq('id',id);
+    if(error){toast('Error: '+error.message,'er');return;}
+    toast(`"${nombre}" habilitado ✓`,'ok');
+    pgUsuarios();
+    return;
+  }
+  // Deshabilitar — advertir si está en uso
+  const msg=enUso
+    ? `"${nombre}" está en uso actualmente. Al deshabilitarlo ya no aparecerá como opción para nuevas asignaciones, pero el historial existente se conserva. ¿Continuar?`
+    : `¿Deshabilitar a "${nombre}"? Ya no aparecerá disponible para asignar, pero su historial se conserva.`;
+  dialog('Deshabilitar usuario préstamo', msg, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'Sí, deshabilitar', cl:'btn-d', fn:async()=>{
+        closeDlg();
+        const{error}=await sb.from('usuarios_prestamo').update({activo:false}).eq('id',id);
+        if(error){toast('Error: '+error.message,'er');return;}
+        toast(`"${nombre}" deshabilitado ✓`,'ok');
+        pgUsuarios();
+      }}
+    ]
+  );
 }
 
 async function verClavePrestamo(prestamoId, nombreUsuario){
