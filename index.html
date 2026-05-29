@@ -21,58 +21,77 @@
   --acc:#3b82f6;--grn:#10b981;--red:#ef4444;--amb:#f59e0b;--pur:#8b5cf6;
   --fn:'DM Sans',sans-serif;--mo:'DM Mono',monospace;
   --r:14px;--r2:10px;
-  --fs:clamp(14px,3.8vw,16px);--fsm:clamp(12px,3.2vw,14px);--fss:clamp(11px,2.8vw,12px);
-  --h:clamp(44px,12vw,52px);
+  --fs:15px;--fsm:13px;--fss:12px;
+  --h:52px;
+  --pg-max:600px;
+}
+@media(min-width:768px){
+  :root{--fs:16px;--fsm:14px;--fss:13px;--h:56px;--pg-max:720px;}
+}
+@media(min-width:1024px){
+  :root{--fs:17px;--fsm:15px;--fss:13px;--h:60px;--pg-max:860px;}
+}
+@media(min-width:1280px){
+  :root{--fs:18px;--fsm:16px;--fss:14px;--h:64px;--pg-max:980px;}
+}
+@media(min-width:1600px){
+  :root{--fs:19px;--fsm:17px;--fss:15px;--h:68px;--pg-max:1100px;}
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{height:100%;touch-action:manipulation}
 body{background:var(--bg);color:var(--tx);font-family:var(--fn);font-size:var(--fs);height:100%;display:flex;flex-direction:column;overflow:hidden}
-#app{display:flex;flex-direction:column;height:100dvh}
-.bar{background:var(--bg2);border-bottom:1px solid var(--brd);padding:0 14px;display:flex;align-items:center;gap:10px;height:var(--h);flex-shrink:0}
-.bar-back{width:34px;height:34px;border-radius:8px;border:1px solid var(--brd2);background:none;color:var(--tx);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:19px;flex-shrink:0}
+#app{display:flex;flex-direction:column;height:100dvh;max-width:var(--pg-max);margin:0 auto;width:100%}
+@media(min-width:768px){
+  body{background:#0a1020}
+  #app{box-shadow:0 0 60px rgba(0,0,0,.5);border-left:1px solid var(--brd);border-right:1px solid var(--brd);}
+}
+.bar{background:var(--bg2);border-bottom:1px solid var(--brd);padding:0 16px;display:flex;align-items:center;gap:10px;height:var(--h);flex-shrink:0}
+.bar-back{width:36px;height:36px;border-radius:8px;border:1px solid var(--brd2);background:none;color:var(--tx);cursor:pointer;display:none;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
 .bar-back.vis{display:flex}
-.bar-title{font-size:clamp(14px,4vw,16px);font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.bar-sub{font-size:var(--fss);color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
-.pg{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+.bar-title{font-size:var(--fs);font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar-sub{font-size:var(--fsm);color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+.pg{flex:1;overflow-y:auto;padding:16px;-webkit-overflow-scrolling:touch}
+@media(min-width:768px){.pg{padding:20px 22px;}}
+@media(min-width:1024px){.pg{padding:24px 28px;}}
 .nav{background:var(--bg2);border-top:1px solid var(--brd);display:flex;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
-.nb{flex:1;padding:9px 2px;border:none;background:none;color:var(--tx3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:var(--fss);font-family:var(--fn);min-height:var(--h)}
+.nb{flex:1;padding:10px 2px;border:none;background:none;color:var(--tx3);cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:var(--fss);font-family:var(--fn);min-height:var(--h)}
 .nb.on{color:var(--acc)}
-.nb svg{width:22px;height:22px}
-.card{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px;margin-bottom:9px;cursor:pointer;transition:background .15s}
+.nb svg{width:24px;height:24px}
+.card{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:background .15s}
 .card:active{background:var(--bg3)}
-.card-row{display:flex;align-items:center;gap:12px}
-.ci{width:40px;height:40px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
-.ct{font-weight:500;font-size:var(--fsm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.cs{font-size:var(--fss);color:var(--tx2);margin-top:2px}
-.b{display:inline-flex;align-items:center;padding:3px 9px;border-radius:20px;font-size:var(--fss);font-weight:500;font-family:var(--mo);white-space:nowrap}
+.card-row{display:flex;align-items:center;gap:13px}
+.ci{width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
+.ct{font-weight:500;font-size:var(--fs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cs{font-size:var(--fsm);color:var(--tx2);margin-top:2px}
+.b{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:var(--fss);font-weight:500;font-family:var(--mo);white-space:nowrap}
 .b-bl{background:rgba(59,130,246,.15);color:#93c5fd}
 .b-gr{background:rgba(16,185,129,.15);color:#6ee7b7}
 .b-am{background:rgba(245,158,11,.15);color:#fcd34d}
 .b-rd{background:rgba(239,68,68,.15);color:#fca5a5}
 .b-pu{background:rgba(139,92,246,.15);color:#c4b5fd}
 .b-gy{background:rgba(100,116,139,.15);color:var(--tx2)}
-.btn{font-family:var(--fn);font-size:var(--fsm);font-weight:600;border:none;border-radius:var(--r2);padding:0 18px;height:42px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;transition:opacity .15s,transform .1s}
+.btn{font-family:var(--fn);font-size:var(--fsm);font-weight:600;border:none;border-radius:var(--r2);padding:0 20px;height:44px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:7px;white-space:nowrap;transition:opacity .15s,transform .1s}
 .btn:active{transform:scale(.97)}
 .btn-p{background:var(--acc);color:#fff}
 .btn-g{background:var(--grn);color:#fff}
 .btn-d{background:var(--red);color:#fff}
 .btn-o{background:transparent;border:1px solid var(--brd2);color:var(--tx)}
 .btn-w{width:100%}
-.btn-s{height:36px;font-size:var(--fss);padding:0 12px}
+.btn-s{height:36px;font-size:var(--fss);padding:0 13px}
 .btn:disabled{opacity:.4;pointer-events:none}
-.inp{font-family:var(--fn);font-size:var(--fsm);background:var(--bg);border:1px solid var(--brd2);color:var(--tx);border-radius:var(--r2);padding:0 14px;height:42px;width:100%;outline:none;transition:border .2s}
+.inp{font-family:var(--fn);font-size:var(--fsm);background:var(--bg);border:1px solid var(--brd2);color:var(--tx);border-radius:var(--r2);padding:0 14px;height:44px;width:100%;outline:none;transition:border .2s}
 .inp:focus{border-color:var(--acc)}
 .sel{appearance:none;background:var(--bg) url("data:image/svg+xml,%3Csvg viewBox='0 0 12 8' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2394a3b8' fill='none' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 12px center/10px;padding-right:32px}
-label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font-weight:500}
+label{display:block;font-size:var(--fsm);color:var(--tx2);margin-bottom:5px;font-weight:500}
 .dlg-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;display:none;align-items:center;justify-content:center;padding:20px}
 .dlg-bg.open{display:flex}
-.dlg{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:20px;max-width:380px;width:100%;max-height:80vh;overflow-y:auto}
+.dlg{background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r);padding:22px;max-width:420px;width:100%;max-height:85vh;overflow-y:auto}
 .dlg-t{font-size:var(--fs);font-weight:600;margin-bottom:8px}
 .dlg-m{font-size:var(--fsm);color:var(--tx2);margin-bottom:14px}
 .dlg-g{font-family:var(--mo);font-size:var(--fss);color:var(--tx3);margin-bottom:14px;word-break:break-all}
 .dlg-g:has(input),.dlg-g:has(select),.dlg-g:has(label){font-family:var(--fn);color:var(--tx);word-break:normal}
 .dlg-a{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
-#toast{position:fixed;bottom:calc(var(--h) + env(safe-area-inset-bottom) + 14px);left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r2);padding:10px 18px;font-size:var(--fsm);font-weight:500;z-index:200;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+#toast{position:fixed;bottom:calc(var(--h) + env(safe-area-inset-bottom) + 14px);left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--brd);border-radius:var(--r2);padding:11px 20px;font-size:var(--fsm);font-weight:500;z-index:200;opacity:0;pointer-events:none;transition:opacity .3s;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
 #toast.ok{border-color:var(--grn);color:var(--grn)}
 #toast.er{border-color:var(--red);color:var(--red)}
 #toast.wa{border-color:var(--amb);color:var(--amb)}
@@ -81,9 +100,9 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
 .sp{width:28px;height:28px;border:3px solid var(--brd);border-top-color:var(--acc);border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .empty{text-align:center;color:var(--tx3);padding:30px 10px;font-size:var(--fsm)}
-.stat-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.stat{flex:1;min-width:72px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:10px;text-align:center}
-.stat-n{font-size:clamp(18px,5vw,24px);font-weight:700;font-family:var(--mo)}
+.stat-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.stat{flex:1;min-width:80px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:12px;text-align:center}
+.stat-n{font-size:clamp(18px,3vw,26px);font-weight:700;font-family:var(--mo)}
 .stat-l{font-size:var(--fss);color:var(--tx2);margin-top:2px}
 .progress{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;margin:8px 0}
 .progress-bar{height:100%;background:var(--acc);border-radius:3px;transition:width .4s}
@@ -91,19 +110,19 @@ label{display:block;font-size:var(--fss);color:var(--tx2);margin-bottom:5px;font
 .scan-area video{width:100%;height:100%;object-fit:cover}
 .scan-line{position:absolute;top:50%;left:10%;right:10%;height:2px;background:var(--red);box-shadow:0 0 8px var(--red);animation:scanmove 2s ease-in-out infinite;transition:background .2s,box-shadow .2s}
 @keyframes scanmove{0%,100%{top:30%}50%{top:70%}}
-.scan-result{padding:7px 12px;border-radius:var(--r2);margin-bottom:5px;font-family:var(--mo);font-size:var(--fss);display:flex;align-items:center;gap:8px;animation:fadeIn .2s}
+.scan-result{padding:8px 13px;border-radius:var(--r2);margin-bottom:5px;font-family:var(--mo);font-size:var(--fss);display:flex;align-items:center;gap:8px;animation:fadeIn .2s}
 @keyframes fadeIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 .file-drop{border:2px dashed var(--brd2);border-radius:var(--r);padding:28px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s}
 .file-drop:hover,.file-drop.drag{border-color:var(--acc);background:rgba(59,130,246,.05)}
 .tbl{width:100%;border-collapse:collapse;font-size:var(--fss)}
-.tbl th{text-align:left;padding:7px 8px;color:var(--tx2);border-bottom:1px solid var(--brd);font-weight:500;white-space:nowrap}
-.tbl td{padding:7px 8px;border-bottom:1px solid var(--brd);vertical-align:middle}
+.tbl th{text-align:left;padding:8px 10px;color:var(--tx2);border-bottom:1px solid var(--brd);font-weight:500;white-space:nowrap}
+.tbl td{padding:8px 10px;border-bottom:1px solid var(--brd);vertical-align:middle}
 .tbl tr:last-child td{border-bottom:none}
 .seg{display:flex;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r2);padding:3px;gap:3px;margin-bottom:14px}
-.seg-btn{flex:1;padding:7px 4px;border:none;background:none;color:var(--tx2);border-radius:8px;cursor:pointer;font-size:var(--fss);font-family:var(--fn);font-weight:500;transition:background .15s,color .15s;white-space:nowrap}
+.seg-btn{flex:1;padding:8px 4px;border:none;background:none;color:var(--tx2);border-radius:8px;cursor:pointer;font-size:var(--fss);font-family:var(--fn);font-weight:500;transition:background .15s,color .15s;white-space:nowrap}
 .seg-btn.on{background:var(--bg2);color:var(--tx);box-shadow:0 1px 3px rgba(0,0,0,.3)}
-.sec-title{font-size:var(--fsm);font-weight:600;color:var(--tx2);margin:16px 0 8px;display:flex;align-items:center;justify-content:space-between}
-.chip{display:inline-block;padding:2px 8px;border-radius:6px;font-size:10px;font-family:var(--mo);font-weight:600;background:rgba(59,130,246,.12);color:var(--acc)}
+.sec-title{font-size:var(--fsm);font-weight:600;color:var(--tx2);margin:18px 0 8px;display:flex;align-items:center;justify-content:space-between}
+.chip{display:inline-block;padding:3px 9px;border-radius:6px;font-size:var(--fss);font-family:var(--mo);font-weight:600;background:rgba(59,130,246,.12);color:var(--acc)}
 </style>
 </head>
 <body>
@@ -3107,7 +3126,7 @@ async function confirmarLiquidacion(){
   );
 }
 
-function generarReciboPDF(p, mens, liqId){
+function generarReciboPDF(p, mens, liqId, soloBytes=false){
   // Número de recibo: CC-documento-MesAño-Quincena
   const docNum=mens?.num_documento||'SIN-CC';
   const reciboNum=`CC${docNum}-${String(p.mes).padStart(2,'0')}${p.año}-${p.quincena==='Primera quincena'?'Q1':'Q2'}`;
@@ -3149,44 +3168,44 @@ function generarReciboPDF(p, mens, liqId){
   // ══════════════════════════════════
   // ENCABEZADO
   // ══════════════════════════════════
-  rect(0,0,PW,38,DARK,0);
-  setFont(18,'bold',WHITE);
-  doc.text('STC Express',ML,y+10);
-  setFont(9,'normal',[148,163,184]);
-  doc.text('Sistema de Mensajería · Suba, Bogotá',ML,y+17);
+  rect(0,0,PW,42,DARK,0);
+  setFont(20,'bold',WHITE);
+  doc.text('STC Express',ML,y+11);
+  setFont(10,'normal',[148,163,184]);
+  doc.text('Sistema de Mensajería · Suba, Bogotá',ML,y+19);
 
   // Etiqueta RECIBO DE PAGO
   doc.setFillColor(...BLUE);
-  doc.roundedRect(PW-MR-42,y+4,42,13,2,2,'F');
-  setFont(8,'bold',WHITE);
-  doc.text('RECIBO DE PAGO',PW-MR-42+21,y+12,{align:'center'});
+  doc.roundedRect(PW-MR-46,y+4,46,15,2,2,'F');
+  setFont(9,'bold',WHITE);
+  doc.text('RECIBO DE PAGO',PW-MR-46+23,y+13,{align:'center'});
 
   // Número de recibo
-  setFont(7,'normal',[148,163,184]);
-  doc.text(`#${reciboNum}`,PW-MR-42+21,y+20,{align:'center'});
+  setFont(8,'normal',[148,163,184]);
+  doc.text(`#${reciboNum}`,PW-MR-46+23,y+22,{align:'center'});
 
-  y=42;
+  y=46;
 
   // ══════════════════════════════════
   // DATOS DEL MENSAJERO
   // ══════════════════════════════════
-  rect(ML,y,CW,28,[30,41,59],2);
+  rect(ML,y,CW,32,[30,41,59],2);
 
-  setFont(11,'bold',WHITE);
-  doc.text(mens?.nombre_completo||p.mensajero, ML+4, y+8);
+  setFont(13,'bold',WHITE);
+  doc.text(mens?.nombre_completo||p.mensajero, ML+5, y+9);
 
-  setFont(8,'normal',[148,163,184]);
+  setFont(9,'normal',[148,163,184]);
   const infoItems=[];
   if(mens?.num_documento) infoItems.push(`CC ${mens.num_documento}`);
   if(mens?.telefono)       infoItems.push(`Tel: ${mens.telefono}`);
   if(mens?.placa)          infoItems.push(`Placa: ${mens.placa}`);
-  doc.text(infoItems.join('   '), ML+4, y+15);
+  doc.text(infoItems.join('   '), ML+5, y+17);
 
-  setFont(8,'normal',[148,163,184]);
+  setFont(9,'normal',[148,163,184]);
   const rango=rangoQuincena(p.mes,p.año,p.quincena);
   const opts={day:'2-digit',month:'long',year:'numeric'};
   const rangoStr=rango.desde.toLocaleDateString('es-CO',opts)+' – '+rango.hasta.toLocaleDateString('es-CO',opts);
-  doc.text(`Período: ${rangoStr}`, ML+4, y+22);
+  doc.text(`Período: ${rangoStr}`, ML+5, y+25);
 
   // Definir esQ1 aquí para usarlo en el badge y más adelante en el texto legal
   const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
@@ -3194,11 +3213,11 @@ function generarReciboPDF(p, mens, liqId){
   // Badge quincena
   const quinLabel=`${MESES_ES[p.mes]} ${p.año} · ${esQ1?'Q1':'Q2'}`;
   doc.setFillColor(...BLUE);
-  doc.roundedRect(PW-MR-45,y+4,45,13,2,2,'F');
-  doc.setFontSize(7.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text(quinLabel,PW-MR-45+22.5,y+12,{align:'center'});
+  doc.roundedRect(PW-MR-50,y+5,50,14,2,2,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(quinLabel,PW-MR-50+25,y+14,{align:'center'});
 
-  y+=33;
+  y+=37;
 
   // ══════════════════════════════════
   // RESUMEN TOTALES
@@ -3213,130 +3232,127 @@ function generarReciboPDF(p, mens, liqId){
     const x=ML+(i*colW);
     const bg=t.bold?[16,185,129]:LIGHT;
     const textCol=t.bold?WHITE:DARK;
-    rect(x+(i>0?2:0), y, colW-(i>0?2:0), 20, bg, 2);
-    setFont(7,'normal', t.bold?[209,250,229]:GRAY);
-    doc.text(t.label, x+(i>0?2:0)+colW/2, y+7, {align:'center'});
-    setFont(t.bold?11:10,'bold', t.bold?WHITE:t.color);
-    doc.text(t.value, x+(i>0?2:0)+colW/2, y+15, {align:'center'});
+    rect(x+(i>0?2:0), y, colW-(i>0?2:0), 22, bg, 2);
+    setFont(8,'normal', t.bold?[209,250,229]:GRAY);
+    doc.text(t.label, x+(i>0?2:0)+colW/2, y+8, {align:'center'});
+    setFont(t.bold?12:11,'bold', t.bold?WHITE:t.color);
+    doc.text(t.value, x+(i>0?2:0)+colW/2, y+17, {align:'center'});
   });
 
-  y+=25;
+  y+=27;
 
   // ══════════════════════════════════
   // DETALLE DÍA A DÍA
   // ══════════════════════════════════
-  setFont(9,'bold',DARK);
+  setFont(10,'bold',DARK);
   doc.text('Detalle de entregas',ML,y);
-  y+=5;
+  y+=6;
 
   // Cabecera tabla
-  rect(ML,y,CW,7,DARK,1);
-  setFont(7,'bold',WHITE);
-  doc.text('Día',ML+3,y+4.5);
-  doc.text('Fecha',ML+18,y+4.5);
-  doc.text('Entregas',ML+55,y+4.5,{align:'center'});
-  doc.text('Valor',PW-MR-3,y+4.5,{align:'right'});
-  y+=7;
+  rect(ML,y,CW,8,DARK,1);
+  setFont(8,'bold',WHITE);
+  doc.text('Día',ML+4,y+5.5);
+  doc.text('Fecha',ML+20,y+5.5);
+  doc.text('Entregas',ML+60,y+5.5,{align:'center'});
+  doc.text('Valor',PW-MR-3,y+5.5,{align:'right'});
+  y+=8;
 
   const diasConEntregas=p.resumen.filter(r=>r.paquetes>0);
   diasConEntregas.forEach((r,i)=>{
     const bg=i%2===0?WHITE:[248,250,252];
-    rect(ML,y,CW,6,bg,0);
-    line(ML,y+6,PW-MR,y+6);
+    rect(ML,y,CW,7,bg,0);
+    line(ML,y+7,PW-MR,y+7);
 
-    // Construir fecha completa del día
     const fechaDia=new Date(p.año,p.mes-1,r.dia);
     const fechaStr=fechaDia.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'});
 
-    setFont(7,'normal',DARK);
-    doc.text(String(r.dia).padStart(2,'0'),ML+3,y+4.2);
-    doc.text(fechaStr,ML+18,y+4.2);
-    setFont(7,'bold',BLUE);
-    doc.text(String(r.paquetes),ML+55,y+4.2,{align:'center'});
-    setFont(7,'normal',GREEN);
-    doc.text(fmtNum(r.valor),PW-MR-3,y+4.2,{align:'right'});
-    y+=6;
+    setFont(8,'normal',DARK);
+    doc.text(String(r.dia).padStart(2,'0'),ML+4,y+5);
+    doc.text(fechaStr,ML+20,y+5);
+    setFont(8,'bold',BLUE);
+    doc.text(String(r.paquetes),ML+60,y+5,{align:'center'});
+    setFont(8,'normal',GREEN);
+    doc.text(fmtNum(r.valor),PW-MR-3,y+5,{align:'right'});
+    y+=7;
 
-    // Nueva página si hace falta
-    if(y>PH-50){
+    if(y>PH-55){
       doc.addPage();
       y=MT;
     }
   });
 
   // Total entregas
-  rect(ML,y,CW,7,[30,41,59],1);
-  setFont(7,'bold',WHITE);
+  rect(ML,y,CW,8,[30,41,59],1);
+  setFont(8,'bold',WHITE);
   const totalEntregas=diasConEntregas.reduce((s,r)=>s+r.paquetes,0);
-  doc.text('TOTAL',ML+3,y+4.8);
-  doc.text(String(totalEntregas),ML+55,y+4.8,{align:'center'});
-  doc.text(fmtNum(p.totalBruto),PW-MR-3,y+4.8,{align:'right'});
-  y+=12;
+  doc.text('TOTAL',ML+4,y+5.5);
+  doc.text(String(totalEntregas),ML+60,y+5.5,{align:'center'});
+  doc.text(fmtNum(p.totalBruto),PW-MR-3,y+5.5,{align:'right'});
+  y+=13;
 
   // ══════════════════════════════════
   // DESCUENTOS (si hay)
   // ══════════════════════════════════
   if(p.descuentosPend.length){
-    if(y>PH-60){doc.addPage();y=MT;}
+    if(y>PH-65){doc.addPage();y=MT;}
 
-    setFont(9,'bold',DARK);
+    setFont(10,'bold',DARK);
     doc.text('Descuentos aplicados',ML,y);
-    y+=5;
+    y+=6;
 
-    rect(ML,y,CW,7,[60,20,20],1);
-    setFont(7,'bold',WHITE);
-    doc.text('Concepto',ML+3,y+4.5);
-    doc.text('Guía',ML+80,y+4.5);
-    doc.text('Valor',PW-MR-3,y+4.5,{align:'right'});
-    y+=7;
+    rect(ML,y,CW,8,[60,20,20],1);
+    setFont(8,'bold',WHITE);
+    doc.text('Concepto',ML+4,y+5.5);
+    doc.text('Guía',ML+80,y+5.5);
+    doc.text('Valor',PW-MR-3,y+5.5,{align:'right'});
+    y+=8;
 
     p.descuentosPend.forEach((d,i)=>{
       const bg=i%2===0?[255,248,248]:[255,240,240];
-      rect(ML,y,CW,6,bg,0);
-      line(ML,y+6,PW-MR,y+6,[239,68,68]);
-      setFont(7,'normal',DARK);
-      doc.text(d.concepto.slice(0,45),ML+3,y+4.2);
-      setFont(7,'normal',GRAY);
-      doc.text(d.numero_guia||'—',ML+80,y+4.2);
-      setFont(7,'bold',RED);
-      doc.text(fmtNum(d.valor),PW-MR-3,y+4.2,{align:'right'});
-      y+=6;
+      rect(ML,y,CW,7,bg,0);
+      line(ML,y+7,PW-MR,y+7,[239,68,68]);
+      setFont(8,'normal',DARK);
+      doc.text(d.concepto.slice(0,45),ML+4,y+5);
+      setFont(8,'normal',GRAY);
+      doc.text(d.numero_guia||'—',ML+80,y+5);
+      setFont(8,'bold',RED);
+      doc.text(fmtNum(d.valor),PW-MR-3,y+5,{align:'right'});
+      y+=7;
     });
-    y+=4;
+    y+=5;
   }
 
   // ══════════════════════════════════
   // TOTAL NETO (caja final destacada)
   // ══════════════════════════════════
-  if(y>PH-45){doc.addPage();y=MT;}
-  rect(ML,y,CW,18,GREEN,3);
-  setFont(8,'normal',WHITE);
-  doc.text('TOTAL A PAGAR',ML+CW/2,y+6,{align:'center'});
-  setFont(16,'bold',WHITE);
-  doc.text(fmtNum(p.totalNeto),ML+CW/2,y+14,{align:'center'});
-  y+=22;
+  if(y>PH-50){doc.addPage();y=MT;}
+  rect(ML,y,CW,20,GREEN,3);
+  setFont(9,'normal',WHITE);
+  doc.text('TOTAL A PAGAR',ML+CW/2,y+7,{align:'center'});
+  setFont(18,'bold',WHITE);
+  doc.text(fmtNum(p.totalNeto),ML+CW/2,y+16,{align:'center'});
+  y+=24;
 
   // ── Datos bancarios ──
   if(mens?.banco||mens?.num_cuenta){
-    if(y>PH-30){doc.addPage();y=MT;}
+    if(y>PH-35){doc.addPage();y=MT;}
     doc.setFillColor(248,255,250);
-    doc.roundedRect(ML,y,CW,15,2,2,'F');
+    doc.roundedRect(ML,y,CW,17,2,2,'F');
     doc.setDrawColor(16,185,129);doc.setLineWidth(0.4);
-    doc.roundedRect(ML,y,CW,15,2,2,'S');
-    setFont(7,'bold',DARK);
-    doc.text('Datos para consignacion',ML+3,y+5.5);
-    setFont(7,'normal',GRAY);
+    doc.roundedRect(ML,y,CW,17,2,2,'S');
+    setFont(8,'bold',DARK);
+    doc.text('Datos para consignación',ML+4,y+6.5);
+    setFont(8,'normal',GRAY);
     const tipoCta=mens.tipo_cuenta?` · Cta ${mens.tipo_cuenta}`:'';
-    doc.text(`${mens.banco||'—'}${tipoCta}`,ML+3,y+11);
-    setFont(8,'bold',[0,120,60]);
-    doc.text(mens.num_cuenta||'—',PW-MR-3,y+11,{align:'right'});
-    y+=19;
+    doc.text(`${mens.banco||'—'}${tipoCta}`,ML+4,y+13);
+    setFont(9,'bold',[0,120,60]);
+    doc.text(mens.num_cuenta||'—',PW-MR-3,y+13,{align:'right'});
+    y+=21;
   }
 
   // ── Texto legal ──
-  if(y>PH-55){doc.addPage();y=MT;}
+  if(y>PH-60){doc.addPage();y=MT;}
 
-  // Determinar quincena en texto
   const quinTexto=esQ1?'PRIMERA QUINCENA':'SEGUNDA QUINCENA';
   const mesTexto=(MESES_ES[p.mes]||'').toUpperCase();
   const valorLetras=numALetras(p.totalNeto);
@@ -3351,14 +3367,14 @@ function generarReciboPDF(p, mens, liqId){
   ];
 
   doc.setFillColor(248,248,255);
-  doc.roundedRect(ML,y,CW,30,2,2,'F');
+  doc.roundedRect(ML,y,CW,34,2,2,'F');
   doc.setDrawColor(200,200,220);doc.setLineWidth(0.3);
-  doc.roundedRect(ML,y,CW,30,2,2,'S');
-  setFont(6.5,'normal',[40,40,80]);
-  let yLegal=y+5;
+  doc.roundedRect(ML,y,CW,34,2,2,'S');
+  setFont(8,'normal',[40,40,80]);
+  let yLegal=y+6;
   textoLegal.forEach(linea=>{
-    if(linea) doc.text(linea,ML+3,yLegal);
-    yLegal+=4;
+    if(linea) doc.text(linea,ML+4,yLegal);
+    yLegal+=5;
   });
   y+=34;
 
@@ -3381,8 +3397,11 @@ function generarReciboPDF(p, mens, liqId){
   doc.text(`Generado el ${ahora} · STC Express Mensajería`,ML,yFoot);
   doc.text(`Recibo #${reciboNum}`,PW-MR,yFoot,{align:'right'});
 
-  // ── Descargar ──
+  // ── Retornar bytes o descargar según el modo ──
   const nombreLimpio=(mens?.nombre_completo||p.mensajero).replace(/\s+/g,'_');
+  if(soloBytes){
+    return doc.output('arraybuffer');
+  }
   doc.save(`Recibo_${nombreLimpio}_${MESES_ES[p.mes]}${p.año}_${p.quincena}.pdf`);
 }
 
@@ -3412,7 +3431,7 @@ async function pgNominaDescuentos(){
   if(pend.length){
     h+=`<div class="sec-title" style="color:var(--amb)">Pendientes de aplicar (${pend.length})</div>`;
     pend.forEach(d=>{
-      h+=`<div class="card" style="border-left:3px solid var(--amb);cursor:default">
+      h+=`<div class="card" style="border-left:3px solid var(--amb);cursor:pointer" onclick="verDetalleDescuento('${d.id}')">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
           <div style="min-width:0;flex:1">
             <div style="font-weight:500;font-size:var(--fsm)">${esc(d.mensajeros?.nombre_completo||'—')}</div>
@@ -3423,7 +3442,10 @@ async function pgNominaDescuentos(){
           <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
             <div style="color:var(--red);font-family:var(--mo);font-weight:600">${fmtCOP(d.valor)}</div>
             <span class="b b-am">Pendiente</span>
-            <button class="btn btn-o btn-s" style="font-size:10px" onclick="marcarDescAplicado('${d.id}','${esc(d.mensajeros?.nombre_completo||'')}')">✓ Marcar aplicado</button>
+            <div style="display:flex;gap:4px">
+              <button class="btn btn-o btn-s" style="font-size:10px" onclick="event.stopPropagation();editarDescuento('${d.id}')">✏️ Editar</button>
+              <button class="btn btn-o btn-s" style="font-size:10px" onclick="event.stopPropagation();marcarDescAplicado('${d.id}','${esc(d.mensajeros?.nombre_completo||'')}')">✓ Aplicar</button>
+            </div>
           </div>
         </div>
       </div>`;
@@ -3435,15 +3457,17 @@ async function pgNominaDescuentos(){
   if(aplic.length){
     h+=`<div class="sec-title">Aplicados recientes (${aplic.length})</div>`;
     aplic.forEach(d=>{
-      h+=`<div class="card" style="cursor:default;opacity:.75">
+      h+=`<div class="card" style="cursor:pointer" onclick="verDetalleDescuento('${d.id}')">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
           <div style="min-width:0;flex:1">
             <div style="font-size:var(--fsm)">${esc(d.mensajeros?.nombre_completo||'—')} · <span style="color:var(--tx2)">${esc(d.concepto)}</span></div>
+            ${d.numero_guia?`<div style="font-size:var(--fss);color:var(--tx3);font-family:var(--mo)">Guía: ${esc(d.numero_guia)}</div>`:''}
             <div style="font-size:var(--fss);color:var(--tx3)">${MESES_ES[d.mes_quincena]} ${d.año_quincena} · ${d.quincena}</div>
           </div>
-          <div style="text-align:right;flex-shrink:0">
+          <div style="text-align:right;flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:5px">
             <div style="color:var(--tx2);font-family:var(--mo)">${fmtCOP(d.valor)}</div>
-            <span class="b b-gr" style="margin-top:3px;display:block">Aplicado</span>
+            <span class="b b-gr">Aplicado</span>
+            <button class="btn btn-o btn-s" style="font-size:10px" onclick="event.stopPropagation();revertirDescuentoInd('${d.id}','${esc(d.concepto)}')">↩ Revertir</button>
           </div>
         </div>
       </div>`;
@@ -3478,6 +3502,112 @@ async function pgNominaDescuentos(){
   </div>`;
 
   setP(h);
+}
+
+// ── Ver / editar / revertir descuento individual ──
+async function verDetalleDescuento(id){
+  const{data:d}=await sb.from('descuentos')
+    .select('*,mensajeros(nombre_completo)')
+    .eq('id',id).single();
+  if(!d){toast('Descuento no encontrado','er');return;}
+
+  const estado=d.aplicado?'Aplicado':'Pendiente';
+  const estadoBadge=d.aplicado?'b-gr':'b-am';
+
+  dialog('Detalle descuento','',
+    `<div style="display:flex;flex-direction:column;gap:8px;font-size:var(--fsm)">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Mensajero</span>
+        <span style="font-weight:600">${esc(d.mensajeros?.nombre_completo||'—')}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Concepto</span>
+        <span>${esc(d.concepto)}</span>
+      </div>
+      ${d.numero_guia?`<div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Guía</span>
+        <span style="font-family:var(--mo)">${esc(d.numero_guia)}</span>
+      </div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Valor</span>
+        <span style="font-family:var(--mo);color:var(--red);font-weight:700">${fmtCOP(d.valor)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Quincena</span>
+        <span>${MESES_ES[d.mes_quincena]} ${d.año_quincena} · ${d.quincena}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="color:var(--tx2)">Estado</span>
+        <span class="b ${estadoBadge}">${estado}</span>
+      </div>
+      ${d.notas?`<div style="background:var(--bg);border-radius:var(--r2);padding:8px 10px;font-size:var(--fss);color:var(--tx2);margin-top:4px">${esc(d.notas)}</div>`:''}
+    </div>`,
+    [
+      {l:'Cerrar', fn:closeDlg},
+      {l:'✏️ Editar', cl:'btn-o', fn:()=>{closeDlg();editarDescuento(id);}},
+      ...(d.aplicado?[{l:'↩ Revertir', cl:'btn-d', fn:()=>{closeDlg();revertirDescuentoInd(id,d.concepto);}}]:[]),
+    ]
+  );
+}
+
+async function editarDescuento(id){
+  const{data:d}=await sb.from('descuentos')
+    .select('*,mensajeros(nombre_completo)')
+    .eq('id',id).single();
+  if(!d){toast('No encontrado','er');return;}
+
+  dialog('Editar descuento','',
+    `<div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+      <div><label>Concepto *</label>
+        <input class="inp" id="edConcepto" value="${esc(d.concepto)}"></div>
+      <div><label>Valor (COP) *</label>
+        <input class="inp" id="edValor" type="text" inputmode="numeric" value="${d.valor}"></div>
+      <div><label>Número de guía</label>
+        <input class="inp" id="edGuia" value="${esc(d.numero_guia||'')}"></div>
+      <div><label>Notas</label>
+        <input class="inp" id="edNotas" value="${esc(d.notas||'')}"></div>
+    </div>`,
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'💾 Guardar', cl:'btn-p', fn:async()=>{
+        const concepto=document.getElementById('edConcepto')?.value?.trim();
+        const valorRaw=document.getElementById('edValor')?.value?.replace(/\./g,'').replace(/,/g,'.');
+        const valor=parseFloat(valorRaw);
+        const numero_guia=document.getElementById('edGuia')?.value?.trim()||null;
+        const notas=document.getElementById('edNotas')?.value?.trim()||null;
+        if(!concepto||!valor){toast('Concepto y valor son obligatorios','er');return;}
+        closeDlg();
+        const{error}=await sb.from('descuentos').update({concepto,valor,numero_guia,notas}).eq('id',id);
+        if(error){toast('Error: '+error.message,'er');return;}
+        toast('Descuento actualizado ✓','ok');
+        pgNominaDescuentos();
+      }}
+    ]
+  );
+}
+
+async function revertirDescuentoInd(id, concepto){
+  dialog('Revertir descuento',
+    `¿Revertir "${concepto}"? Volverá a quedar pendiente y se desligará de su recibo.`, '',
+    [
+      {l:'Cancelar', fn:closeDlg},
+      {l:'↩ Revertir', cl:'btn-d', fn:async()=>{
+        closeDlg();
+        const liqId=(await sb.from('descuentos').select('liquidacion_aplicada_id').eq('id',id).single())?.data?.liquidacion_aplicada_id;
+        const{error}=await sb.from('descuentos').update({aplicado:false,liquidacion_aplicada_id:null}).eq('id',id);
+        if(error){toast('Error: '+error.message,'er');return;}
+        // Recalcular totales de la liquidación si estaba ligado
+        if(liqId){
+          const{data:resto}=await sb.from('descuentos').select('valor').eq('liquidacion_aplicada_id',liqId);
+          const nuevoDesc=(resto||[]).reduce((s,d)=>s+Number(d.valor||0),0);
+          const{data:liq}=await sb.from('liquidaciones').select('total_bruto').eq('id',liqId).single();
+          await sb.from('liquidaciones').update({total_descuentos:nuevoDesc,total_neto:Number(liq?.total_bruto||0)-nuevoDesc}).eq('id',liqId);
+        }
+        toast('Descuento revertido ✓','ok');
+        pgNominaDescuentos();
+      }}
+    ]
+  );
 }
 
 // ── Marcar descuento individual como aplicado ──
@@ -5363,24 +5493,7 @@ async function descargarTodosRecibos(quinId, quinNombre){
 
 // Versión que retorna bytes en lugar de descargar directamente
 function generarReciboPDFBytes(p, mens, liqId){
-  // Reutiliza toda la lógica de generarReciboPDF pero retorna ArrayBuffer
-  const {jsPDF}=window.jspdf;
-  // Llamar la función original pero interceptar el save
-  const docNum=mens?.num_documento||'SIN-CC';
-  const reciboNum=`CC${docNum}-${String(p.mes).padStart(2,'0')}${p.año}-${p.quincena==='Primera quincena'?'Q1':'Q2'}`;
-  const esQ1=p.quincena==='Primera quincena'||p.quincena==='Q1';
-  // Crear doc temporal
-  const docTemp=new jsPDF({orientation:'portrait',unit:'mm',format:'a4'});
-  // Usar la función existente redirigiendo el output
-  // La forma más simple: llamar generarReciboPDF con output en memoria
-  const originalSave=jsPDF.prototype.save;
-  let pdfOutput=null;
-  jsPDF.prototype.save=function(name){
-    pdfOutput=this.output('arraybuffer');
-  };
-  generarReciboPDF(p, mens, liqId);
-  jsPDF.prototype.save=originalSave;
-  return pdfOutput;
+  return generarReciboPDF(p, mens, liqId, true); // true = solo retornar bytes
 }
 // ── Revertir descuento aplicado en un recibo ──
 async function revertirDescuento(descId, liqId, concepto){
