@@ -2442,17 +2442,14 @@ async function descargarReciboDesdequincena(qmId){
 
 // ── PDF Resumen de quincena para contabilidad ──
 async function descargarResumenQuincena(quinId, quinNombre){
-  // Cargar mensajeros de la quincena
   const{data:mensajeros}=await sb.from('quincena_mensajeros')
-    .select('id,nombre_display,total_entregas,total_bruto,en_bd,mensajero_id,mensajeros(banco,num_cuenta,tipo_cuenta)')
+    .select('id,nombre_display,total_entregas,total_bruto,en_bd,mensajero_id,mensajeros(id,banco,num_cuenta,tipo_cuenta)')
     .eq('quincena_id',quinId)
     .order('total_bruto',{ascending:false});
   if(!mensajeros?.length){toast('Sin datos','wa');return;}
 
-  // Obtener datos de la quincena para consultar descuentos
   const{data:quinData}=await sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single();
 
-  // Cargar descuentos pendientes de todos los mensajeros con ID de esta quincena
   let descMap={};
   if(quinData){
     const mensIds=mensajeros.filter(m=>m.mensajero_id).map(m=>m.mensajero_id);
@@ -2472,7 +2469,6 @@ async function descargarResumenQuincena(quinId, quinNombre){
     }
   }
 
-  // Calcular totales netos
   const mensajerosConNeto=mensajeros.map(m=>({
     ...m,
     total_descuentos:descMap[m.mensajero_id]||0,
@@ -2487,103 +2483,127 @@ async function descargarResumenQuincena(quinId, quinNombre){
   const fecha=new Date().toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'});
 
   // Encabezado
-  doc.setFillColor(...DARK);doc.rect(0,0,PW,30,'F');
-  doc.setFontSize(18);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text('STC Express',ML,y+10);
-  doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
-  doc.text('Resumen de nómina para contabilidad',ML,y+18);
-  doc.setFontSize(8);doc.setTextColor(148,163,184);
-  doc.text(fecha,PW-MR,y+10,{align:'right'});
-  doc.setFillColor(...BLUE);doc.roundedRect(PW-MR-60,y+12,60,11,2,2,'F');
-  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text(quinNombre.slice(0,28),PW-MR-30,y+19,{align:'center'});
-  y=36;
+  doc.setFillColor(...DARK);doc.rect(0,0,PW,32,'F');
+  doc.setFontSize(20);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('STC Express',ML,y+11);
+  doc.setFontSize(10);doc.setFont('helvetica','normal');doc.setTextColor(148,163,184);
+  doc.text('Resumen de nómina para contabilidad',ML,y+20);
+  doc.setFontSize(9);doc.setTextColor(148,163,184);
+  doc.text(fecha,PW-MR,y+11,{align:'right'});
+  doc.setFillColor(...BLUE);doc.roundedRect(PW-MR-65,y+13,65,12,2,2,'F');
+  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(quinNombre.slice(0,28),PW-MR-32,y+21,{align:'center'});
+  y=38;
 
   // Totales resumen
   const totalBruto=mensajerosConNeto.reduce((s,m)=>s+Number(m.total_bruto||0),0);
   const totalDescuentosGlobal=mensajerosConNeto.reduce((s,m)=>s+m.total_descuentos,0);
-  const totalNeto=mensajerosConNeto.reduce((s,m)=>s+m.total_neto,0);
+  const totalNeto=mensajerosConNeto.reduce((s,m)=>s+Math.max(0,m.total_neto),0); // solo positivos
   const totalEntr=mensajerosConNeto.reduce((s,m)=>s+Number(m.total_entregas||0),0);
+  const totalDeuda=mensajerosConNeto.reduce((s,m)=>s+Math.abs(Math.min(0,m.total_neto)),0);
 
-  doc.setFillColor(...LIGHT);doc.roundedRect(ML,y,CW,14,2,2,'F');
-  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...DARK);
-  doc.text(`Bruto: ${fmtCOP(totalBruto)}`,ML+4,y+6);
+  doc.setFillColor(...LIGHT);doc.roundedRect(ML,y,CW,18,2,2,'F');
+  doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(...DARK);
+  doc.text(`Bruto: ${fmtCOP(totalBruto)}`,ML+5,y+8);
   if(totalDescuentosGlobal>0){
     doc.setTextColor(...RED);
-    doc.text(`Descuentos: -${fmtCOP(totalDescuentosGlobal)}`,ML+70,y+6);
+    doc.text(`Descuentos: -${fmtCOP(totalDescuentosGlobal)}`,ML+85,y+8);
   }
   doc.setTextColor(...GREEN);
-  doc.text(`TOTAL NETO: ${fmtCOP(totalNeto)}`,ML+4,y+12);
-  doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(...GRAY);
-  doc.text(`${mensajerosConNeto.length} mensajeros · ${totalEntr.toLocaleString()} entregas`,PW-MR-4,y+9,{align:'right'});
-  y+=20;
+  doc.text(`TOTAL NETO: ${fmtCOP(totalNeto)}`,ML+5,y+15);
+  if(totalDeuda>0){
+    doc.setTextColor(...RED);
+    doc.text(`Deuda pendiente: ${fmtCOP(totalDeuda)}`,ML+85,y+15);
+  }
+  doc.setFont('helvetica','normal');doc.setFontSize(9);doc.setTextColor(...GRAY);
+  doc.text(`${mensajerosConNeto.length} mensajeros · ${totalEntr.toLocaleString()} entregas`,PW-MR-5,y+11,{align:'right'});
+  y+=24;
 
   // Cabecera tabla
-  doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
-  doc.setFontSize(6.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text('#',ML+2,y+4.8);
-  doc.text('Mensajero',ML+10,y+4.8);
-  doc.text('Banco',ML+90,y+4.8);
-  doc.text('Cuenta',ML+135,y+4.8);
-  doc.text('Entregas',ML+190,y+4.8,{align:'center'});
-  doc.text('Bruto',ML+218,y+4.8,{align:'right'});
-  doc.text('Desc.',ML+240,y+4.8,{align:'right'});
-  doc.text('NETO',PW-MR-2,y+4.8,{align:'right'});
-  y+=7;
+  const ROW=8;
+  doc.setFillColor(...DARK);doc.rect(ML,y,CW,ROW,'F');
+  doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text('#',ML+2,y+5.5);
+  doc.text('Mensajero',ML+11,y+5.5);
+  doc.text('Banco',ML+90,y+5.5);
+  doc.text('Cuenta',ML+138,y+5.5);
+  doc.text('Entregas',ML+193,y+5.5,{align:'center'});
+  doc.text('Bruto',ML+222,y+5.5,{align:'right'});
+  doc.text('Desc.',ML+247,y+5.5,{align:'right'});
+  doc.text('NETO',PW-MR-2,y+5.5,{align:'right'});
+  y+=ROW;
+
+  const dibujarCabecera=()=>{
+    doc.setFillColor(...DARK);doc.rect(ML,y,CW,ROW,'F');
+    doc.setFontSize(8);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+    doc.text('#',ML+2,y+5.5);doc.text('Mensajero',ML+11,y+5.5);
+    doc.text('Banco',ML+90,y+5.5);doc.text('Cuenta',ML+138,y+5.5);
+    doc.text('Entregas',ML+193,y+5.5,{align:'center'});
+    doc.text('Bruto',ML+222,y+5.5,{align:'right'});
+    doc.text('Desc.',ML+247,y+5.5,{align:'right'});
+    doc.text('NETO',PW-MR-2,y+5.5,{align:'right'});
+    y+=ROW;
+  };
 
   mensajerosConNeto.forEach((m,i)=>{
-    if(y>192){
-      doc.addPage();y=12;
-      doc.setFillColor(...DARK);doc.rect(ML,y,CW,7,'F');
-      doc.setFontSize(6.5);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-      doc.text('#',ML+2,y+4.8);doc.text('Mensajero',ML+10,y+4.8);
-      doc.text('Banco',ML+90,y+4.8);doc.text('Cuenta',ML+135,y+4.8);
-      doc.text('Entregas',ML+190,y+4.8,{align:'center'});
-      doc.text('Bruto',ML+218,y+4.8,{align:'right'});
-      doc.text('Desc.',ML+240,y+4.8,{align:'right'});
-      doc.text('NETO',PW-MR-2,y+4.8,{align:'right'});
-      y+=7;
-    }
+    if(y>188){doc.addPage();y=12;dibujarCabecera();}
     const bg=i%2===0?WHITE:[248,250,252];
-    doc.setFillColor(...bg);doc.rect(ML,y,CW,7,'F');
-    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.2);doc.line(ML,y+7,PW-MR,y+7);
-    doc.setFontSize(6.5);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
-    doc.text(String(i+1),ML+2,y+4.8);
+    const esNegativo=m.total_neto<0;
+    doc.setFillColor(...(esNegativo?[255,240,240]:bg));
+    doc.rect(ML,y,CW,ROW,'F');
+    doc.setDrawColor(...LIGHT);doc.setLineWidth(0.2);doc.line(ML,y+ROW,PW-MR,y+ROW);
+    doc.setFontSize(8);doc.setTextColor(...GRAY);doc.setFont('helvetica','normal');
+    doc.text(String(i+1),ML+2,y+5.5);
     doc.setTextColor(...DARK);
-    const nom=m.nombre_display.length>32?m.nombre_display.slice(0,31)+'…':m.nombre_display;
-    doc.text(nom,ML+10,y+4.8);
+    const nom=m.nombre_display.length>33?m.nombre_display.slice(0,32)+'…':m.nombre_display;
+    doc.text(nom,ML+11,y+5.5);
     const banco=m.mensajeros?.banco||'—';
     const cuenta=m.mensajeros?.num_cuenta||'—';
     const tipo=m.mensajeros?.tipo_cuenta?` (${m.mensajeros.tipo_cuenta})`:'';
     doc.setTextColor(...GRAY);
-    doc.text((banco+tipo).slice(0,20),ML+90,y+4.8);
+    doc.text((banco+tipo).slice(0,22),ML+90,y+5.5);
     doc.setTextColor(...DARK);doc.setFont('helvetica','bold');
-    doc.text(cuenta.slice(0,18),ML+135,y+4.8);
+    doc.text(cuenta.slice(0,20),ML+138,y+5.5);
     doc.setTextColor(...BLUE);doc.setFont('helvetica','normal');
-    doc.text(String(m.total_entregas||0),ML+190,y+4.8,{align:'center'});
+    doc.text(String(m.total_entregas||0),ML+193,y+5.5,{align:'center'});
     doc.setTextColor(150,150,150);
-    doc.text(fmtCOP(m.total_bruto),ML+218,y+4.8,{align:'right'});
+    doc.text(fmtCOP(m.total_bruto),ML+222,y+5.5,{align:'right'});
     if(m.total_descuentos>0){
       doc.setTextColor(...RED);
-      doc.text(`-${fmtCOP(m.total_descuentos)}`,ML+240,y+4.8,{align:'right'});
+      doc.text(`-${fmtCOP(m.total_descuentos)}`,ML+247,y+5.5,{align:'right'});
     } else {
       doc.setTextColor(...GRAY);
-      doc.text('—',ML+240,y+4.8,{align:'right'});
+      doc.text('—',ML+247,y+5.5,{align:'right'});
     }
-    doc.setTextColor(...GREEN);doc.setFont('helvetica','bold');
-    doc.text(fmtCOP(m.total_neto),PW-MR-2,y+4.8,{align:'right'});
-    y+=7;
+    // Neto: rojo si negativo con nota de deuda
+    if(esNegativo){
+      doc.setTextColor(...RED);doc.setFont('helvetica','bold');
+      doc.text('$0',PW-MR-2,y+5.5,{align:'right'});
+      doc.setFontSize(6);doc.setFont('helvetica','normal');
+      doc.text(`(debe ${fmtCOP(Math.abs(m.total_neto))})`,PW-MR-2,y+5.5+2.5,{align:'right'});
+    } else {
+      doc.setTextColor(...GREEN);doc.setFont('helvetica','bold');
+      doc.text(fmtCOP(m.total_neto),PW-MR-2,y+5.5,{align:'right'});
+    }
+    y+=ROW;
   });
 
   // Total final
-  y+=3;
-  doc.setFillColor(...GREEN);doc.roundedRect(ML,y,CW,9,2,2,'F');
-  doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
-  doc.text(`TOTAL NETO A PAGAR: ${fmtCOP(totalNeto)}`,ML+CW/2,y+6,{align:'center'});
+  y+=4;
+  doc.setFillColor(...GREEN);doc.roundedRect(ML,y,CW,11,2,2,'F');
+  doc.setFontSize(11);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+  doc.text(`TOTAL NETO A PAGAR: ${fmtCOP(totalNeto)}`,ML+CW/2,y+7.5,{align:'center'});
+
+  if(totalDeuda>0){
+    y+=14;
+    doc.setFillColor(...RED);doc.roundedRect(ML,y,CW,9,2,2,'F');
+    doc.setFontSize(9);doc.setFont('helvetica','bold');doc.setTextColor(...WHITE);
+    doc.text(`Deuda pendiente a cobrar en próxima quincena: ${fmtCOP(totalDeuda)}`,ML+CW/2,y+6,{align:'center'});
+  }
 
   // Pie
-  doc.setFontSize(6);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
-  doc.text(`STC Express · ${quinNombre} · Generado ${fecha}`,ML,202);
+  doc.setFontSize(7);doc.setFont('helvetica','normal');doc.setTextColor(...GRAY);
+  doc.text(`STC Express · ${quinNombre} · Generado ${fecha}`,ML,205);
 
   const arch=quinNombre.replace(/[^a-zA-Z0-9]/g,'_');
   doc.save(`Nomina_${arch}.pdf`);
@@ -3075,12 +3095,16 @@ async function confirmarLiquidacion(){
           }
 
           // 3. Insertar liquidación formal
+          // Si el neto es negativo, se paga $0 y la diferencia queda como deuda
+          const netoAPagar=Math.max(0, p.totalNeto);
+          const deudaPendiente=p.totalNeto<0 ? Math.abs(p.totalNeto) : 0;
+
           const{data:liq,error:lErr}=await sb.from('liquidaciones').insert({
             mensajero_id:p.mensDBId,
             mes:p.mes, año:p.año, quincena:p.quincena,
             total_bruto:p.totalBruto,
             total_descuentos:p.totalDescuentos,
-            total_neto:p.totalNeto,
+            total_neto:netoAPagar,
             created_by:S.user.id
           }).select().single();
           if(lErr)throw lErr;
@@ -3106,16 +3130,42 @@ async function confirmarLiquidacion(){
               .in('id',ids);
           }
 
-          // 3. Obtener datos del mensajero para el recibo
+          // 4. Si quedó deuda, crear descuento para la próxima quincena
+          if(deudaPendiente>0){
+            // Calcular próxima quincena
+            let mesD=p.mes, añoD=p.año, quinD;
+            if(p.quincena==='Primera quincena'||p.quincena==='Q1'){
+              quinD='Q2';
+            } else {
+              quinD='Q1';
+              mesD=p.mes===12?1:p.mes+1;
+              if(p.mes===12) añoD=p.año+1;
+            }
+            await sb.from('descuentos').insert({
+              mensajero_id: p.mensDBId,
+              concepto: `Deuda pendiente (exceso de descuento Q${p.quincena.includes('Primera')||p.quincena==='Q1'?'1':'2'} ${MESES_ES[p.mes]} ${p.año})`,
+              valor: deudaPendiente,
+              tipo: 'deuda',
+              mes_quincena: mesD,
+              año_quincena: añoD,
+              quincena: quinD,
+              aplicado: false,
+              fecha_evento: new Date().toISOString().slice(0,10),
+            });
+            toast(`Recibo generado. Deuda de ${fmtCOP(deudaPendiente)} registrada para próxima quincena ✓`,'ok');
+          } else {
+            toast('Recibo generado y descargado ✓','ok');
+          }
+
+          // Obtener datos del mensajero y generar PDF
           const{data:mens}=await sb.from('mensajeros')
-            .select('nombre_completo,num_documento,telefono,placa')
+            .select('nombre_completo,num_documento,telefono,placa,banco,num_cuenta,tipo_cuenta')
             .eq('id',p.mensDBId).single();
+          const pParaPDF={...p, totalNeto:netoAPagar,
+            notaDeuda:deudaPendiente>0?`Descuento excede pago. Deuda de ${fmtCOP(deudaPendiente)} trasladada a próxima quincena.`:null
+          };
+          generarReciboPDF(pParaPDF, mens, liq.id);
 
-          // 4. Generar PDF
-          generarReciboPDF(p, mens, liq.id);
-
-          toast('Recibo generado y descargado ✓','ok');
-          S._liqPreview=null;
           go('nomina-home');
         }catch(e){
           toast('Error: '+e.message,'er');
@@ -3377,6 +3427,18 @@ function generarReciboPDF(p, mens, liqId, soloBytes=false){
     yLegal+=5;
   });
   y+=34;
+
+  // ── Nota de deuda pendiente (si aplica) ──
+  if(p.notaDeuda){
+    if(y>PH-20){doc.addPage();y=MT;}
+    doc.setFillColor(255,240,240);
+    doc.roundedRect(ML,y,CW,12,2,2,'F');
+    doc.setDrawColor(...RED);doc.setLineWidth(0.5);
+    doc.roundedRect(ML,y,CW,12,2,2,'S');
+    setFont(8,'bold',RED);
+    doc.text('⚠ NOTA: '+p.notaDeuda,ML+4,y+7.5);
+    y+=16;
+  }
 
   // ── Línea de firma ──
   if(y>PH-20){doc.addPage();y=MT;}
