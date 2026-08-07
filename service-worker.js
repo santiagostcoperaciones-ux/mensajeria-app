@@ -1,7 +1,7 @@
 // Service Worker — STC Express PWA
 // v1.0.0 — Cambia VERSION cuando hagas un release nuevo para forzar actualización
 
-const VERSION = 'stc-express-v1.0.1';
+const VERSION = 'stc-express-v1.1.0'; // cortes de nómina flexibles
 const CACHE_STATIC = `${VERSION}-static`;
 
 // Recursos que cacheamos en la instalación (app shell)

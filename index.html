@@ -2173,11 +2173,82 @@ function rangoQuincena(mes,año,quincena){
   }
 }
 
+// ══ CORTES FLEXIBLES ══════════════════════════════════════════════
+// Los cortes de pago pueden cambiar (ej: 15–30, 31–16). Por eso cada
+// quincena guarda su rango real (fecha_desde / fecha_hasta) en BD y
+// la fórmula de arriba queda solo como valor por defecto.
+
+function isoADate(iso){return new Date(iso+'T12:00:00');}
+function dateAIso(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;}
+
+// Rango real de una quincena: usa las fechas guardadas si existen, si no la fórmula
+function rangoQuincenaReal(quinRow){
+  if(quinRow?.fecha_desde&&quinRow?.fecha_hasta){
+    return {desde:isoADate(quinRow.fecha_desde), hasta:isoADate(quinRow.fecha_hasta), custom:true};
+  }
+  return rangoQuincena(quinRow.mes,quinRow.año,quinRow.quincena);
+}
+
+// Versión con BD: busca primero una quincena guardada cuyo rango real contenga la fecha
+async function calcQuincenaDB(fecha){
+  if(!S._quinCache)S._quinCache={};
+  if(S._quinCache[fecha])return S._quinCache[fecha];
+  try{
+    const{data}=await sb.from('quincenas')
+      .select('mes,año,quincena,fecha_desde,fecha_hasta')
+      .not('fecha_desde','is',null).not('fecha_hasta','is',null)
+      .lte('fecha_desde',fecha).gte('fecha_hasta',fecha)
+      .order('created_at',{ascending:false}).limit(1);
+    if(data?.length){
+      const q=data[0];
+      const qNorm=q.quincena==='Primera quincena'?'Q1':q.quincena==='Segunda quincena'?'Q2':q.quincena;
+      const res={quincena:qNorm,mes:q.mes,año:q.año,desde:q.fecha_desde,hasta:q.fecha_hasta,custom:true};
+      S._quinCache[fecha]=res;
+      return res;
+    }
+  }catch(e){/* columnas sin migrar o sin conexión → usar fórmula */}
+  const res=calcQuincena(fecha);
+  S._quinCache[fecha]=res;
+  return res;
+}
+
+// Descuentos pendientes de una quincena: hace match por etiqueta (mes/año/quincena)
+// Y por rango de fechas real, para no perder descuentos cuando cambian los cortes.
+// Los ya aplicados (liquidacion_aplicada_id) quedan excluidos, así no se cobran doble.
+async function descuentosPendQuincena({mensajeroId=null,mensajeroIds=null,mes,año,quincena,desde=null,hasta=null,campos=null}){
+  const sel=campos||'id,mensajero_id,concepto,valor,tipo,numero_guia,fecha_evento,aplicado,liquidacion_aplicada_id';
+  const qNorm=quincena==='Primera quincena'||quincena==='Q1'?'Q1':'Q2';
+  const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
+  let q1=sb.from('descuentos').select(sel)
+    .eq('mes_quincena',mes).eq('año_quincena',año)
+    .in('quincena',[qNorm,qAlt]).is('liquidacion_aplicada_id',null);
+  if(mensajeroId)q1=q1.eq('mensajero_id',mensajeroId);
+  if(mensajeroIds)q1=q1.in('mensajero_id',mensajeroIds);
+  const proms=[q1];
+  if(desde&&hasta){
+    let q2=sb.from('descuentos').select(sel)
+      .gte('fecha_evento',desde).lte('fecha_evento',hasta)
+      .is('liquidacion_aplicada_id',null);
+    if(mensajeroId)q2=q2.eq('mensajero_id',mensajeroId);
+    if(mensajeroIds)q2=q2.in('mensajero_id',mensajeroIds);
+    proms.push(q2);
+  }
+  const resultados=await Promise.all(proms);
+  const map={};
+  resultados.forEach(r=>(r.data||[]).forEach(d=>{map[d.id]=d;}));
+  return Object.values(map);
+}
+// ══════════════════════════════════════════════════════════════════
+
 function fmtCOP(v){return'$'+Number(v||0).toLocaleString('es-CO');}
 function fmtRango(mes,año,q){
   const r=rangoQuincena(mes,año,q);
   const opts={day:'2-digit',month:'short'};
   return r.desde.toLocaleDateString('es-CO',opts)+' – '+r.hasta.toLocaleDateString('es-CO',opts)+' '+año;
+}
+function fmtRangoFechas(desde,hasta){
+  const opts={day:'2-digit',month:'short'};
+  return desde.toLocaleDateString('es-CO',opts)+' – '+hasta.toLocaleDateString('es-CO',opts)+' '+hasta.getFullYear();
 }
 
 // ── Nómina Home ──
@@ -2188,7 +2259,7 @@ async function pgNominaHome(){
   setP(loader());
 
   const[{data:quincenas},{count:totalDescPend}]=await Promise.all([
-    sb.from('quincenas').select('id,mes,año,quincena,nombre,archivo_nombre,total_entregas,total_mensajeros,created_at').order('año',{ascending:false}).order('mes',{ascending:false}).order('quincena',{ascending:false}),
+    sb.from('quincenas').select('*').order('año',{ascending:false}).order('mes',{ascending:false}).order('quincena',{ascending:false}),
     sb.from('descuentos').select('id',{count:'exact',head:true}).is('liquidacion_aplicada_id',null),
   ]);
 
@@ -2213,6 +2284,7 @@ async function pgNominaHome(){
           <div class="ci" style="background:rgba(59,130,246,.12);color:var(--acc);font-size:22px">📁</div>
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:var(--fsm)">${esc(q.nombre)}</div>
+            ${q.fecha_desde&&q.fecha_hasta?`<div style="font-size:var(--fss);color:var(--acc);margin-top:1px">📅 ${fmtRangoFechas(isoADate(q.fecha_desde),isoADate(q.fecha_hasta))}</div>`:''}
             <div style="font-size:var(--fss);color:var(--tx2);margin-top:2px">
               ${q.total_mensajeros} mensajero${q.total_mensajeros!==1?'s':''} · ${(q.total_entregas||0).toLocaleString()} entregas
             </div>
@@ -2251,24 +2323,22 @@ async function pgQuincenaDetalle(){
       .select('id,mensajero_id,nombre_display,correo_xcargo,total_entregas,total_bruto,en_bd')
       .eq('quincena_id',quinId)
       .order('total_bruto',{ascending:false}),
-    sb.from('quincenas').select('mes,año,quincena').eq('id',quinId).single(),
+    sb.from('quincenas').select('*').eq('id',quinId).single(),
   ]);
 
   if(!mensajeros?.length){setP('<p class="empty">Sin datos para esta quincena</p>');return;}
 
-  // Cargar descuentos pendientes (sin liquidacion_aplicada_id) de esta quincena
+  // Cargar descuentos pendientes: match por etiqueta Y por rango real de corte
   const mensIds=mensajeros.filter(m=>m.mensajero_id).map(m=>m.mensajero_id);
   let descMap={};
   if(mensIds.length&&quinInfo){
-    const qNorm=quinInfo.quincena==='Primera quincena'||quinInfo.quincena==='Q1'?'Q1':'Q2';
-    const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
-    const{data:descs}=await sb.from('descuentos')
-      .select('mensajero_id,valor')
-      .in('mensajero_id',mensIds)
-      .eq('mes_quincena',quinInfo.mes)
-      .eq('año_quincena',quinInfo.año)
-      .in('quincena',[qNorm,qAlt])
-      .is('liquidacion_aplicada_id',null);
+    const rangoQ=rangoQuincenaReal(quinInfo);
+    const descs=await descuentosPendQuincena({
+      mensajeroIds:mensIds,
+      mes:quinInfo.mes,año:quinInfo.año,quincena:quinInfo.quincena,
+      desde:dateAIso(rangoQ.desde),hasta:dateAIso(rangoQ.hasta),
+      campos:'id,mensajero_id,valor,fecha_evento'
+    });
     (descs||[]).forEach(d=>{
       descMap[d.mensajero_id]=(descMap[d.mensajero_id]||0)+Number(d.valor||0);
     });
@@ -2340,13 +2410,16 @@ async function pgQuinMensajeroRecibo(){
     sb.from('quincena_mensajeros').select('quincena_id,mensajero_id').eq('id',qmId).single()
       .then(async({data:ref})=>{
         if(!ref?.mensajero_id||!ref?.quincena_id) return {data:[]};
-        const{data:qInfo}=await sb.from('quincenas').select('mes,año,quincena').eq('id',ref.quincena_id).single();
+        const{data:qInfo}=await sb.from('quincenas').select('*').eq('id',ref.quincena_id).single();
         if(!qInfo) return {data:[]};
-        return sb.from('descuentos')
-          .select('id,concepto,valor,numero_guia,tipo')
-          .eq('mensajero_id',ref.mensajero_id)
-          .eq('mes_quincena',qInfo.mes).eq('año_quincena',qInfo.año).eq('quincena',qInfo.quincena)
-          .is('liquidacion_aplicada_id',null);
+        const rangoQ=rangoQuincenaReal(qInfo);
+        const descs=await descuentosPendQuincena({
+          mensajeroId:ref.mensajero_id,
+          mes:qInfo.mes,año:qInfo.año,quincena:qInfo.quincena,
+          desde:dateAIso(rangoQ.desde),hasta:dateAIso(rangoQ.hasta),
+          campos:'id,concepto,valor,numero_guia,tipo,fecha_evento'
+        });
+        return {data:descs};
       }),
   ]);
 
@@ -2424,13 +2497,15 @@ async function descargarReciboDesdequincena(qmId){
     const{data:m}=await sb.from('mensajeros').select('nombre_completo,num_documento,telefono,placa,banco,num_cuenta,tipo_cuenta').eq('id',qm.mensajero_id).single();
     if(m) mens=m;
   }
-  const{data:quinData}=await sb.from('quincenas').select('mes,año,quincena').eq('id',qm.quincena_id).single();
+  const{data:quinData}=await sb.from('quincenas').select('*').eq('id',qm.quincena_id).single();
   const p={
     mensajero:mens.nombre_completo||qm.nombre_display,
     mes:quinData?.mes||new Date().getMonth()+1,
     año:quinData?.año||new Date().getFullYear(),
     quincena:quinData?.quincena==='Q1'?'Primera quincena':'Segunda quincena',
-    resumen:detalle.map(d=>({dia:d.dia,paquetes:d.entregas,valor:d.valor})),
+    rangoDesde:quinData?.fecha_desde||null,
+    rangoHasta:quinData?.fecha_hasta||null,
+    resumen:detalle.map(d=>({dia:d.dia,fecha:d.fecha,paquetes:d.entregas,valor:d.valor})),
     totalBruto:Number(qm.total_bruto),
     totalDescuentos:totalDescuentos||0,
     totalNeto:totalNeto||Number(qm.total_bruto),
@@ -2645,7 +2720,7 @@ async function pgNominaLiquidar(){
           <div style="flex:1">
             <label>Mes</label>
             <select class="inp sel" id="liqMes">
-              ${MESES_ES.slice(1).map((m,i)=>`<option value="${i+1}" ${i+3===new Date().getMonth()?'selected':''}>${m}</option>`).join('')}
+              ${MESES_ES.slice(1).map((m,i)=>`<option value="${i+1}" ${i===new Date().getMonth()?'selected':''}>${m}</option>`).join('')}
             </select>
           </div>
           <div style="flex:1">
@@ -2660,6 +2735,17 @@ async function pgNominaLiquidar(){
             </select>
           </div>
         </div>
+        <div style="display:flex;gap:8px">
+          <div style="flex:1">
+            <label>Corte desde</label>
+            <input class="inp" type="date" id="liqDesde" value="${S._liqDesde||''}">
+          </div>
+          <div style="flex:1">
+            <label>Corte hasta</label>
+            <input class="inp" type="date" id="liqHasta" value="${S._liqHasta||''}">
+          </div>
+        </div>
+        <p style="font-size:var(--fss);color:var(--tx3)">📅 Se llenan solas con las fechas reales del archivo xcargo. Ajústalas si el corte de pago es distinto (ej: del 15 al 30, o del 31 al 16).</p>
       </div>
 
       <button class="btn btn-p btn-w" onclick="liqPreview()">Ver resumen →</button>
@@ -2787,25 +2873,35 @@ async function liqHandleFile(file){
 
     S._liqData={archivo:file.name,df,mensajeros,mensajerosMap};
 
-    // Detectar mes/año del archivo
-    const meses={};
-    df.forEach(r=>{if(r.fecha) meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]=(meses[`${r.fecha.getFullYear()}-${r.fecha.getMonth()+1}`]||0)+1;});
-    const topMes=Object.entries(meses).sort((a,b)=>b[1]-a[1])[0]?.[0];
-    if(topMes){
-      const[año,mes]=topMes.split('-').map(Number);
+    // Detectar rango real de fechas del archivo (soporta cortes que cruzan de mes, ej. 31 jul – 16 ago)
+    const fechasValidas=df.filter(r=>r.fecha&&!isNaN(r.fecha)).map(r=>r.fecha.getTime());
+    if(fechasValidas.length){
+      const fMin=new Date(Math.min(...fechasValidas));
+      const fMax=new Date(Math.max(...fechasValidas));
+      const fechaDesdeIso=dateAIso(fMin);
+      const fechaHastaIso=dateAIso(fMax);
+      S._liqDesde=fechaDesdeIso;
+      S._liqHasta=fechaHastaIso;
+
+      // Rellenar inputs de corte con el rango real del archivo
+      const inpDesde=document.getElementById('liqDesde');
+      const inpHasta=document.getElementById('liqHasta');
+      if(inpDesde) inpDesde.value=fechaDesdeIso;
+      if(inpHasta) inpHasta.value=fechaHastaIso;
+
+      // Mes/año/quincena del período = punto medio del rango.
+      // Funciona con cualquier esquema de corte: 1–15, 16–31, 15–30, 31–16, 17–30...
+      const mid=new Date((fMin.getTime()+fMax.getTime())/2);
+      const mes=mid.getMonth()+1, año=mid.getFullYear();
+      const quincenaDetectada=mid.getDate()<=15?'Q1':'Q2';
       S._liqAñoDetectado=año;
       S._liqMesDetectado=mes;
+      S._liqQuincenaDetectada=quincenaDetectada;
+
       const selMes=document.getElementById('liqMes');
       const inpAño=document.getElementById('liqAño');
       if(selMes) selMes.value=mes;
       if(inpAño) inpAño.value=año;
-
-      // ── Guardar quincena automáticamente en BD para Q1 y Q2 ──
-      // Detectar quincena según distribución de fechas del archivo
-      const diasQ1=df.filter(r=>r.fecha&&r.fecha.getDate()<=15).length;
-      const diasQ2=df.filter(r=>r.fecha&&r.fecha.getDate()>15).length;
-      const quincenaDetectada=diasQ2>diasQ1?'Q2':'Q1';
-      S._liqQuincenaDetectada=quincenaDetectada;
 
       // Pre-seleccionar quincena
       const selQ=document.getElementById('liqQuincena');
@@ -2816,17 +2912,26 @@ async function liqHandleFile(file){
       document.getElementById('liqFileLabel').textContent='⏳ Guardando quincena...';
 
       try{
-        // Buscar o crear quincena sin upsert
+        // Buscar o crear quincena sin upsert — guardando el rango REAL de corte
         let quin=null;
         {
+          const camposQuin={nombre:quinNombre,archivo_nombre:file.name,fecha_desde:fechaDesdeIso,fecha_hasta:fechaHastaIso};
           const{data:existeQ}=await sb.from('quincenas').select('id').eq('mes',mes).eq('año',año).eq('quincena',quincenaDetectada).maybeSingle();
           if(existeQ){
-            await sb.from('quincenas').update({nombre:quinNombre,archivo_nombre:file.name}).eq('id',existeQ.id);
+            const{error:upErr}=await sb.from('quincenas').update(camposQuin).eq('id',existeQ.id);
+            if(upErr){ // columnas fecha_desde/hasta aún sin migrar → guardar sin ellas
+              await sb.from('quincenas').update({nombre:quinNombre,archivo_nombre:file.name}).eq('id',existeQ.id);
+            }
             quin=existeQ;
           } else {
-            const{data:nuevaQ}=await sb.from('quincenas').insert({mes,año,quincena:quincenaDetectada,nombre:quinNombre,archivo_nombre:file.name}).select('id').single();
+            let{data:nuevaQ,error:insErr}=await sb.from('quincenas').insert({mes,año,quincena:quincenaDetectada,...camposQuin}).select('id').single();
+            if(insErr){
+              const r2=await sb.from('quincenas').insert({mes,año,quincena:quincenaDetectada,nombre:quinNombre,archivo_nombre:file.name}).select('id').single();
+              nuevaQ=r2.data;
+            }
             quin=nuevaQ;
           }
+          S._quinCache={}; // invalidar caché de rangos
         }
 
         if(quin?.id){
@@ -2931,53 +3036,61 @@ async function liqPreview(){
   const quincena=document.getElementById('liqQuincena')?.value;
   if(!mensajeroNombre||!mes||!año||!quincena){toast('Completa todos los campos','er');return;}
 
-  const rango=rangoQuincena(mes,año,quincena);
+  // Rango de corte: los inputs editables mandan; si están vacíos, la fórmula por defecto
+  const desdeIso=document.getElementById('liqDesde')?.value||null;
+  const hastaIso=document.getElementById('liqHasta')?.value||null;
+  let rango;
+  if(desdeIso&&hastaIso){
+    if(desdeIso>hastaIso){toast('El corte "desde" no puede ser mayor que el corte "hasta"','er');return;}
+    rango={desde:isoADate(desdeIso),hasta:isoADate(hastaIso),custom:true};
+  }else{
+    rango=rangoQuincena(mes,año,quincena);
+  }
+  const rangoDesdeIso=dateAIso(rango.desde), rangoHastaIso=dateAIso(rango.hasta);
   const df=S._liqData.df;
 
   // Obtener mensajeroId desde el mapa cargado en liqHandleFile
   const mensInfo=Object.values(S._liqData.mensajerosMap||{}).find(m=>m.nombre===mensajeroNombre);
   const mensDBId=mensInfo?.id||null;
 
-  // Filtrar entregas del mensajero en el período
+  // Filtrar entregas del mensajero en el período (comparación por fecha, ignorando la hora)
   const sub=df.filter(r=>{
     if(r.nombreReal!==mensajeroNombre)return false;
     const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
-    return fd>=rango.desde&&fd<=rango.hasta;
+    if(isNaN(fd))return false;
+    const dIso=dateAIso(fd);
+    return dIso>=rangoDesdeIso&&dIso<=rangoHastaIso;
   });
 
-  // Resumen por día
+  // Resumen por fecha real (soporta rangos que cruzan de mes, ej. 31 jul – 16 ago)
   const diasSet={};
   sub.forEach(r=>{
     const fd=r.fecha instanceof Date?r.fecha:new Date(r.fecha);
-    const d=fd.getDate();
-    if(!diasSet[d])diasSet[d]={dia:d,paquetes:0,valor:0};
-    diasSet[d].paquetes++;
-    diasSet[d].valor+=r.valor;
+    const key=dateAIso(fd);
+    if(!diasSet[key])diasSet[key]={dia:fd.getDate(),fecha:key,paquetes:0,valor:0};
+    diasSet[key].paquetes++;
+    diasSet[key].valor+=r.valor;
   });
-  const diasRango=[];
-  for(let d=new Date(rango.desde);d<=rango.hasta;d.setDate(d.getDate()+1))
-    diasRango.push(d.getDate());
-  const resumen=diasRango.map(d=>diasSet[d]||{dia:d,paquetes:0,valor:0});
+  const resumen=[];
+  for(let d=new Date(rango.desde);d<=rango.hasta;d.setDate(d.getDate()+1)){
+    const key=dateAIso(d);
+    resumen.push(diasSet[key]||{dia:d.getDate(),fecha:key,paquetes:0,valor:0});
+  }
   const totalBruto=resumen.reduce((s,r)=>s+r.valor,0);
 
-  // Descuentos pendientes si hay match en BD
-  // Normalizar quincena a Q1/Q2 para hacer match correcto
+  // Descuentos pendientes: match por etiqueta de quincena Y por fecha del evento dentro del corte
   let descuentosPend=[];
   if(mensDBId){
-    const qNorm=quincena==='Primera quincena'||quincena==='Q1'?'Q1':'Q2';
-    const qAlt=qNorm==='Q1'?'Primera quincena':'Segunda quincena';
-    const{data:descs}=await sb.from('descuentos')
-      .select('id,concepto,valor,tipo,numero_guia,fecha_evento,aplicado,liquidacion_aplicada_id')
-      .eq('mensajero_id',mensDBId)
-      .eq('mes_quincena',mes).eq('año_quincena',año)
-      .in('quincena',[qNorm,qAlt])
-      .is('liquidacion_aplicada_id',null);
-    descuentosPend=descs||[];
+    descuentosPend=await descuentosPendQuincena({
+      mensajeroId:mensDBId,mes,año,quincena,
+      desde:rangoDesdeIso,hasta:rangoHastaIso,
+      campos:'id,concepto,valor,tipo,numero_guia,fecha_evento,aplicado,liquidacion_aplicada_id'
+    });
   }
-  const totalDescuentos=descuentosPend.reduce((s,d)=>s+d.valor,0);
+  const totalDescuentos=descuentosPend.reduce((s,d)=>s+Number(d.valor||0),0);
   const totalNeto=totalBruto-totalDescuentos;
 
-  S._liqPreview={mensajero:mensajeroNombre,mes,año,quincena,resumen,totalBruto,totalDescuentos,totalNeto,descuentosPend,mensDBId};
+  S._liqPreview={mensajero:mensajeroNombre,mes,año,quincena,resumen,totalBruto,totalDescuentos,totalNeto,descuentosPend,mensDBId,rangoDesde:rangoDesdeIso,rangoHasta:rangoHastaIso};
 
   const area=document.getElementById('liqPreviewArea');
   if(!area)return;
@@ -2985,7 +3098,7 @@ async function liqPreview(){
 
   let html=`
     <div class="sec-title">Resumen · ${MESES_ES[mes]} ${año} · ${quincena}</div>
-    <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:10px">${fmtRango(mes,año,quincena)}</div>
+    <div style="font-size:var(--fss);color:var(--tx3);margin-bottom:10px">Corte: ${fmtRangoFechas(rango.desde,rango.hasta)}</div>
   `;
 
   if(!mensDBId){
@@ -3010,7 +3123,7 @@ async function liqPreview(){
         <tbody>
           ${resumen.filter(r=>r.paquetes>0).map(r=>`
             <tr>
-              <td>${r.dia}</td>
+              <td>${r.fecha?isoADate(r.fecha).toLocaleDateString('es-CO',{day:'2-digit',month:'short'}):r.dia}</td>
               <td style="font-family:var(--mo)">${r.paquetes}</td>
               <td style="font-family:var(--mo);color:var(--grn)">${fmtCOP(r.valor)}</td>
             </tr>`).join('')}
@@ -3053,13 +3166,24 @@ async function confirmarLiquidacion(){
         closeDlg();
         setP(`<div class="ld"><div class="sp"></div><p style="color:var(--tx2)">Guardando y generando PDF...</p></div>`);
         try{
-          // 1. Crear/obtener quincena
+          // 1. Crear/obtener quincena (guardando el rango real de corte)
           const quinNombre=`${MESES_ES[p.mes]} ${p.año} · ${p.quincena}`;
           let quin=null;
           {
             const{data:existeQ}=await sb.from('quincenas').select('id').eq('mes',p.mes).eq('año',p.año).eq('quincena',p.quincena).maybeSingle();
-            if(existeQ){quin=existeQ;}
-            else{const{data:nQ}=await sb.from('quincenas').insert({mes:p.mes,año:p.año,quincena:p.quincena,nombre:quinNombre,archivo_nombre:S._liqData?.archivo||null}).select('id').single();quin=nQ;}
+            if(existeQ){
+              quin=existeQ;
+              if(p.rangoDesde&&p.rangoHasta){
+                await sb.from('quincenas').update({fecha_desde:p.rangoDesde,fecha_hasta:p.rangoHasta}).eq('id',existeQ.id).then(()=>{},()=>{});
+              }
+            }
+            else{
+              const base={mes:p.mes,año:p.año,quincena:p.quincena,nombre:quinNombre,archivo_nombre:S._liqData?.archivo||null};
+              let{data:nQ,error:qErr}=await sb.from('quincenas').insert({...base,fecha_desde:p.rangoDesde||null,fecha_hasta:p.rangoHasta||null}).select('id').single();
+              if(qErr){const r2=await sb.from('quincenas').insert(base).select('id').single();nQ=r2.data;}
+              quin=nQ;
+            }
+            S._quinCache={};
           }
 
           // 2. Crear/actualizar entrada del mensajero en quincena_mensajeros
@@ -3074,13 +3198,13 @@ async function confirmarLiquidacion(){
             }
             qmEntry=qm;
 
-            // Guardar detalle día a día
+            // Guardar detalle día a día (fecha real del archivo — soporta cortes que cruzan de mes)
             if(qm?.id){
               await sb.from('quincena_detalle').delete().eq('quincena_mensajero_id',qm.id);
               const detalles=p.resumen.filter(r=>r.paquetes>0).map(r=>({
                 quincena_mensajero_id:qm.id,
                 dia:r.dia,
-                fecha:new Date(p.año,p.mes-1,r.dia).toISOString().slice(0,10),
+                fecha:r.fecha||dateAIso(new Date(p.año,p.mes-1,r.dia)),
                 entregas:r.paquetes,
                 valor:r.valor,
               }));
@@ -3109,13 +3233,12 @@ async function confirmarLiquidacion(){
           }).select().single();
           if(lErr)throw lErr;
 
-          // 2. Guardar detalle día a día
+          // 2. Guardar detalle día a día (fecha real — soporta cortes que cruzan de mes)
           const detalles=p.resumen.filter(r=>r.paquetes>0).map(r=>{
-            const fecha=new Date(p.año,p.mes-1,r.dia);
             return{
               liquidacion_id:liq.id,
               dia:r.dia,
-              fecha:fecha.toISOString().slice(0,10),
+              fecha:r.fecha||dateAIso(new Date(p.año,p.mes-1,r.dia)),
               entregas:r.paquetes,
               valor:r.valor,
             };
@@ -3252,7 +3375,9 @@ function generarReciboPDF(p, mens, liqId, soloBytes=false){
   doc.text(infoItems.join('   '), ML+5, y+17);
 
   setFont(9,'normal',[148,163,184]);
-  const rango=rangoQuincena(p.mes,p.año,p.quincena);
+  const rango=(p.rangoDesde&&p.rangoHasta)
+    ?{desde:isoADate(p.rangoDesde),hasta:isoADate(p.rangoHasta)}
+    :rangoQuincena(p.mes,p.año,p.quincena);
   const opts={day:'2-digit',month:'long',year:'numeric'};
   const rangoStr=rango.desde.toLocaleDateString('es-CO',opts)+' – '+rango.hasta.toLocaleDateString('es-CO',opts);
   doc.text(`Período: ${rangoStr}`, ML+5, y+25);
@@ -3313,7 +3438,7 @@ function generarReciboPDF(p, mens, liqId, soloBytes=false){
     rect(ML,y,CW,7,bg,0);
     line(ML,y+7,PW-MR,y+7);
 
-    const fechaDia=new Date(p.año,p.mes-1,r.dia);
+    const fechaDia=r.fecha?isoADate(r.fecha):new Date(p.año,p.mes-1,r.dia);
     const fechaStr=fechaDia.toLocaleDateString('es-CO',{weekday:'short',day:'2-digit',month:'short'});
 
     setFont(8,'normal',DARK);
@@ -3752,11 +3877,13 @@ async function pgDescIndividual(){
     </div>
   `);
 
-  document.getElementById('diFecha').addEventListener('change',function(){
-    const q=calcQuincena(this.value);
-    document.getElementById('diQuincenaInfo').innerHTML=`
-      📅 Cae en <strong>${q.quincena}</strong> · ${MESES_ES[q.mes]} ${q.año}<br>
-      <span style="color:var(--tx3)">${fmtRango(q.mes,q.año,q.quincena)}</span>
+  document.getElementById('diFecha').addEventListener('change',async function(){
+    const q=await calcQuincenaDB(this.value);
+    const rangoTxt=q.custom?fmtRangoFechas(isoADate(q.desde),isoADate(q.hasta)):fmtRango(q.mes,q.año,q.quincena);
+    const info=document.getElementById('diQuincenaInfo');
+    if(info)info.innerHTML=`
+      📅 Cae en <strong>${q.quincena}</strong> · ${MESES_ES[q.mes]} ${q.año}${q.custom?'':' <span style="color:var(--tx3)">(estimado)</span>'}<br>
+      <span style="color:var(--tx3)">${rangoTxt}</span>
     `;
   });
   document.getElementById('diFecha').dispatchEvent(new Event('change'));
@@ -3782,11 +3909,22 @@ async function guardarDescIndividual(){
   if(isNaN(valor)||valor<=0){toast('El valor debe ser mayor a 0','er');return;}
 
   try{
-    const{error}=await sb.from('descuentos').insert({
+    const q=await calcQuincenaDB(fecha);
+    const payload={
       mensajero_id:mensId, tipo, concepto,
       numero_guia:tipo==='paquete_perdido'?guia:null,
-      valor, fecha_evento:fecha, notas, created_by:S.user.id
-    });
+      valor, fecha_evento:fecha, notas, created_by:S.user.id,
+      mes_quincena:q.mes, año_quincena:q.año, quincena:q.quincena
+    };
+    let{error}=await sb.from('descuentos').insert(payload);
+    if(error){ // fallback si la BD calcula la quincena por trigger y rechaza las columnas
+      const r2=await sb.from('descuentos').insert({
+        mensajero_id:mensId, tipo, concepto,
+        numero_guia:tipo==='paquete_perdido'?guia:null,
+        valor, fecha_evento:fecha, notas, created_by:S.user.id
+      });
+      error=r2.error;
+    }
     if(error)throw error;
     toast('Descuento registrado ✓','ok');
     go('nomina-descuentos');
@@ -3979,11 +4117,13 @@ function dgRecalc(){
   const valorUno=n>0?Math.floor(valor/n):0;
   const resto=n>0?valor-(valorUno*n):0;
 
-  // Actualizar quincena info
+  // Actualizar quincena info (usa el rango real guardado en BD, con caché por fecha)
   if(fecha){
-    const q=calcQuincena(fecha);
-    const qi=document.getElementById('dgQuincenaInfo');
-    if(qi)qi.innerHTML=`📅 Cae en <strong>${q.quincena}</strong> · ${MESES_ES[q.mes]} ${q.año}<br><span style="color:var(--tx3)">${fmtRango(q.mes,q.año,q.quincena)}</span>`;
+    calcQuincenaDB(fecha).then(q=>{
+      const qi=document.getElementById('dgQuincenaInfo');
+      const rangoTxt=q.custom?fmtRangoFechas(isoADate(q.desde),isoADate(q.hasta)):fmtRango(q.mes,q.año,q.quincena);
+      if(qi)qi.innerHTML=`📅 Cae en <strong>${q.quincena}</strong> · ${MESES_ES[q.mes]} ${q.año}${q.custom?'':' <span style="color:var(--tx3)">(estimado)</span>'}<br><span style="color:var(--tx3)">${rangoTxt}</span>`;
+    });
   }
 
   // Limpiar todos los valores primero
@@ -4019,7 +4159,7 @@ async function guardarDescGrupal(){
   const n=checks.length;
   const valorUno=Math.floor(valor/n);
   const resto=valor-(valorUno*n);
-  const q=calcQuincena(fecha);
+  const q=await calcQuincenaDB(fecha);
 
   dialog(
     'Confirmar descuento grupal',
